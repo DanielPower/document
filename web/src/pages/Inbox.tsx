@@ -82,15 +82,15 @@ export function InboxPage() {
   };
 
   return (
-    <div className="inbox">
+    <div className="inbox-page">
       <aside className="inbox-list">
         {items.length === 0 && <p className="muted pad">Inbox is empty. Drop files anywhere to add documents.</p>}
         {items.map((i) => (
-          <button key={i.id} className={`inbox-item ${i.id === selectedId ? "active" : ""} ${i.status}`} onClick={() => navigate(`/inbox/${i.id}`)}>
+          <button key={i.id} className={`inbox-item ${i.id === selectedId ? "active" : ""}`} onClick={() => navigate(`/inbox/${i.id}`)}>
             {i.hasThumb ? <img src={thumbUrl(i.id)} alt="" /> : <div className="thumb-ph">{i.mimeType.split("/")[1]}</div>}
             <div>
               <div className="title">{i.title}</div>
-              <div className={`status ${i.status}`}>{i.status === "queued" && i.error ? "Failed, retrying soon" : STATUS_LABEL[i.status]}</div>
+              <div className={`status status-${i.status}`}>{i.status === "queued" && i.error ? "Failed, retrying soon" : STATUS_LABEL[i.status]}</div>
             </div>
           </button>
         ))}

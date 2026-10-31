@@ -65,7 +65,7 @@ export function AskPage() {
       {history.map((x, i) => (
         <div className="exchange" key={history.length - i}>
           <div className="question">{x.question}</div>
-          {!x.response && !x.error && <p className="muted status analyzing">Searching your documents…</p>}
+          {!x.response && !x.error && <p className="muted status status-analyzing">Searching your documents…</p>}
           {x.error && <div className="alert error">{x.error}</div>}
           {x.response && <Answer response={x.response} />}
         </div>
