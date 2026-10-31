@@ -1,0 +1,3 @@
+.thumb { width: 44px; height: 56px; object-fit: cover; object-position: top; border: 1px solid var(--border); border-radius: 3px; flex-shrink: 0; background: white; }
+/* ui.listItem stretches its first child; a thumbnail keeps its size. */
+.fixed { flex: none !important; }

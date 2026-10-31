@@ -1,0 +1,11 @@
+/* Wide tables scroll sideways instead of squeezing (phones especially). */
+.wrap { overflow-x: auto; margin: 8px 0 16px; background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); }
+.table { border-collapse: collapse; width: 100%; font-size: 13px; }
+.table th, .table td { padding: 7px 10px; border-bottom: 1px solid var(--border); text-align: left; vertical-align: top; }
+.table th { font-size: 12px; color: var(--muted); font-weight: 600; white-space: nowrap; position: sticky; top: 0; background: var(--panel); }
+.table tbody tr:last-child td { border-bottom: none; }
+.table tbody tr:hover { background: var(--bg); }
+.num { text-align: right !important; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.unit { font-weight: 400; }
+.title { min-width: 200px; font-weight: 500; }
+.nowrap { white-space: nowrap; }

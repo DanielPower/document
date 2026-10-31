@@ -33,14 +33,24 @@ export function sniffMime(buf: Buffer, filename: string): string | null {
 export interface IngestResult {
   id: string;
   duplicate: boolean;
+  /** The file was in the trash and has been restored. */
+  restored?: boolean;
 }
+
+/** Days a document stays in the trash before it's deleted for good. */
+export const TRASH_DAYS = 30;
 
 export async function ingestBuffer(buf: Buffer, filename: string): Promise<IngestResult> {
   const mime = sniffMime(buf, filename);
   if (!mime) throw new HttpError(415, `Unsupported file type: ${filename}. Supported: PDF, PNG, JPEG, TIFF, GIF, TXT, MD.`);
   const sha256 = crypto.createHash("sha256").update(buf).digest("hex");
 
-  const [dupe] = await sql<{ entity_id: string }[]>`select entity_id from document where sha256 = ${sha256}`;
+  const [dupe] = await sql<{ entity_id: string; status: string }[]>`select entity_id, status from document where sha256 = ${sha256}`;
+  if (dupe?.status === "trashed") {
+    // Adding a file that's in the trash brings it back.
+    await restoreDocument(dupe.entity_id);
+    return { id: dupe.entity_id, duplicate: false, restored: true };
+  }
   if (dupe) return { id: dupe.entity_id, duplicate: true };
 
   const id = crypto.randomUUID();
@@ -68,7 +78,33 @@ export async function ingestBuffer(buf: Buffer, filename: string): Promise<Inges
   return { id, duplicate: false };
 }
 
-/** Deletes a document and its files. */
+/** Moves a document to the trash. It can be restored until it's purged. */
+export async function trashDocument(id: string): Promise<void> {
+  const [d] = await sql`
+    update document set trashed_from = case when status in ('inbox', 'filed') then status else 'inbox' end,
+      status = 'trashed', trashed_at = now(), locked_at = null
+    where entity_id = ${id} and status <> 'trashed' returning entity_id`;
+  if (!d) throw new HttpError(404, "Document not found, or already in the trash.");
+}
+
+/** Brings a document back from the trash to where it was (inbox or filed). */
+export async function restoreDocument(id: string): Promise<void> {
+  const [d] = await sql`
+    update document set status = coalesce(trashed_from, 'inbox'), trashed_at = null, trashed_from = null
+    where entity_id = ${id} and status = 'trashed' returning entity_id`;
+  if (!d) throw new HttpError(404, "That document isn't in the trash.");
+}
+
+/** Deletes documents that have been in the trash longer than TRASH_DAYS. Returns how many. */
+export async function purgeTrash(all = false): Promise<number> {
+  const rows = await sql<{ entity_id: string }[]>`
+    select entity_id from document where status = 'trashed'
+      ${all ? sql`` : sql`and trashed_at < now() - make_interval(days => ${TRASH_DAYS})`}`;
+  for (const r of rows) await deleteDocument(r.entity_id);
+  return rows.length;
+}
+
+/** Deletes a document and its files for good. */
 export async function deleteDocument(id: string): Promise<void> {
   const [doc] = await sql<{ original_path: string; archive_path: string | null; thumb_path: string | null }[]>`
     select original_path, archive_path, thumb_path from document where entity_id = ${id}`;

@@ -110,7 +110,7 @@ export interface Proposal {
   matched?: string[];
 }
 
-export type DocumentStatus = "queued" | "ocr" | "analyzing" | "inbox" | "filed" | "failed";
+export type DocumentStatus = "queued" | "ocr" | "analyzing" | "inbox" | "filed" | "failed" | "trashed";
 
 export interface DocumentSummary {
   id: string;
@@ -129,6 +129,8 @@ export interface DocumentSummary {
   error: string | null;
   /** For inbox documents with an AI proposal: what the proposal would file it as. */
   proposed?: { title: string; documentDate: string | null; components: string[] };
+  /** The document's components with their values; only when asked for (`values=1`). */
+  values?: DraftComponent[];
 }
 
 export interface DocumentDetail extends DocumentSummary {
@@ -151,6 +153,8 @@ export interface ObjectSummary {
 
 export interface ObjectDetail extends ObjectSummary {
   current: Draft;
+  /** Other objects whose fields link to this one (a policy covering this car, say). */
+  linkedFrom: Array<{ id: string; title: string }>;
 }
 
 export interface AggregateSpec {

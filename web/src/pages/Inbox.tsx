@@ -181,9 +181,17 @@ export function InboxPage() {
   const file = async () => {
     if (!doc || !draft || !canFile) return;
     const id = doc.id;
-    if (await act(() => api.saveDocument(id, draft, true), "Filed")) {
+    if (await act(() => api.saveDocument(id, draft, true))) {
       forget(id);
       step(1, true);
+      toast("Filed", "info", {
+        label: "Undo",
+        run: async () => {
+          await api.unfileDocument(id);
+          await Promise.all([loadList(), refresh()]);
+          navigate(`/inbox/${id}`);
+        },
+      });
     }
   };
 
@@ -194,11 +202,19 @@ export function InboxPage() {
   };
 
   const remove = async () => {
-    if (!doc || !confirm("Delete this document and its files?")) return;
+    if (!doc) return;
     const id = doc.id;
-    if (await act(() => api.deleteDocument(id), "Deleted")) {
+    if (await act(() => api.deleteDocument(id))) {
       forget(id);
       step(1, true);
+      toast("Moved to the trash", "info", {
+        label: "Undo",
+        run: async () => {
+          await api.restoreDocument(id);
+          await Promise.all([loadList(), refresh()]);
+          navigate(`/inbox/${id}`);
+        },
+      });
     }
   };
 
@@ -354,7 +370,7 @@ export function InboxPage() {
                     <div className={styles.menu}>
                       {status?.ai && <button disabled={busy} onClick={() => reanalyze(false)}>Re-run AI</button>}
                       <button disabled={busy} onClick={() => reanalyze(true)}>Redo OCR</button>
-                      <button className={ui.danger} disabled={busy} onClick={remove}>Delete</button>
+                      <button className={ui.danger} disabled={busy} onClick={remove}>Move to trash</button>
                     </div>
                   </details>
                 </div>

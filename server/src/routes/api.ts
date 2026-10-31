@@ -8,7 +8,7 @@ import { HttpError } from "../errors.ts";
 import { aiAvailable, analyzeDocument, generateComponent } from "../services/ai.ts";
 import { createComponent, deleteComponent, listComponents, updateComponent } from "../services/components.ts";
 import { applyDraft, describeComponents, loadComponents, loadDraft, refTitles } from "../services/entities.ts";
-import { deleteDocument, ingestBuffer } from "../services/ingest.ts";
+import { deleteDocument, ingestBuffer, purgeTrash, restoreDocument, trashDocument } from "../services/ingest.ts";
 import { findDuplicates, mergeObjects, reconcileDraft } from "../services/objects.ts";
 import { aggregateDocuments, searchDocuments, type SearchParams } from "../services/search.ts";
 import { askQuestion, interpretQuestion } from "../services/ai-query.ts";
@@ -92,6 +92,7 @@ export async function apiRoutes(app: FastifyInstance) {
     limit: q.limit ? Number(q.limit) : undefined,
     offset: q.offset ? Number(q.offset) : undefined,
     semantic: q.semantic !== "0" && q.semantic !== false,
+    values: q.values === "1",
   });
 
   app.get("/api/documents", async (req) => searchDocuments(searchParams(req.query as Record<string, unknown>)));
@@ -217,9 +218,28 @@ export async function apiRoutes(app: FastifyInstance) {
     return proposal;
   });
 
+  /** Moves the document to the trash; with ?forever=1 deletes it and its files now. */
   app.delete("/api/documents/:id", async (req) => {
     const { id } = IdParams.parse(req.params);
-    await deleteDocument(id);
+    if ((req.query as { forever?: string }).forever === "1") await deleteDocument(id);
+    else await trashDocument(id);
+    return { ok: true };
+  });
+
+  app.post("/api/documents/:id/restore", async (req) => {
+    const { id } = IdParams.parse(req.params);
+    await restoreDocument(id);
+    return { ok: true };
+  });
+
+  /** Empties the trash. */
+  app.delete("/api/trash", async () => ({ deleted: await purgeTrash(true) }));
+
+  /** Puts a filed document back in the inbox, as filed (the undo for filing). */
+  app.post("/api/documents/:id/unfile", async (req) => {
+    const { id } = IdParams.parse(req.params);
+    const [d] = await sql`update document set status = 'inbox' where entity_id = ${id} and status = 'filed' returning entity_id`;
+    if (!d) throw new HttpError(409, "Only filed documents can go back to the inbox.");
     return { ok: true };
   });
 
@@ -277,6 +297,7 @@ export async function apiRoutes(app: FastifyInstance) {
     const rows = await sql<{ id: string; title: string; notes: string; document_count: number }[]>`
       select e.id, e.title, e.notes,
         (select count(distinct ci.entity_id)::int from field_value fv join component_instance ci on ci.id = fv.instance_id
+            join document cd on cd.entity_id = ci.entity_id and cd.status <> 'trashed'
           where fv.value_ref = e.id) as document_count
       from entity e
       where e.kind = 'object'
@@ -304,8 +325,14 @@ export async function apiRoutes(app: FastifyInstance) {
     if (!o) throw new HttpError(404, "Object not found.");
     const current = await loadDraft(sql, id);
     const [{ n }] = await sql<{ n: number }[]>`
-      select count(distinct ci.entity_id)::int as n from field_value fv join component_instance ci on ci.id = fv.instance_id where fv.value_ref = ${id}`;
-    return { ...o, documentCount: n, components: current.components.map((c) => c.component), summary: "", current };
+      select count(distinct ci.entity_id)::int as n from field_value fv join component_instance ci on ci.id = fv.instance_id join document cd on cd.entity_id = ci.entity_id and cd.status <> 'trashed' where fv.value_ref = ${id}`;
+    const linkedFrom = await sql<{ id: string; title: string }[]>`
+      select distinct e.id, e.title from field_value fv
+      join component_instance ci on ci.id = fv.instance_id
+      join entity e on e.id = ci.entity_id and e.kind = 'object'
+      where fv.value_ref = ${id} and e.id <> ${id}
+      order by e.title`;
+    return { ...o, documentCount: n, components: current.components.map((c) => c.component), summary: "", current, linkedFrom: [...linkedFrom] };
   });
 
   const ObjectBody = z.object({ draft: DraftSchema, notes: z.string().optional() });
@@ -348,7 +375,7 @@ export async function apiRoutes(app: FastifyInstance) {
     const ids = groups.flatMap((g) => g.ids);
     const rows = await sql<{ id: string; title: string; document_count: number }[]>`
       select e.id, e.title,
-        (select count(distinct ci.entity_id)::int from field_value fv join component_instance ci on ci.id = fv.instance_id where fv.value_ref = e.id) as document_count
+        (select count(distinct ci.entity_id)::int from field_value fv join component_instance ci on ci.id = fv.instance_id join document cd on cd.entity_id = ci.entity_id and cd.status <> 'trashed' where fv.value_ref = e.id) as document_count
       from entity e where e.id = any(${ids}::uuid[])`;
     const byId = new Map(rows.map((r) => [r.id, r]));
     return groups.map((g) => ({

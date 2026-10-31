@@ -9,7 +9,13 @@ interface AppData {
   objects: ObjectSummary[];
   status: Status | null;
   refresh: () => Promise<void>;
-  toast: (msg: string, kind?: "info" | "error") => void;
+  toast: (msg: string, kind?: "info" | "error", action?: ToastAction) => void;
+}
+
+/** A button on a toast, e.g. Undo. */
+export interface ToastAction {
+  label: string;
+  run: () => void | Promise<void>;
 }
 
 const Ctx = createContext<AppData | null>(null);
@@ -18,7 +24,7 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
   const [catalog, setCatalog] = useState<ComponentDef[]>([]);
   const [objects, setObjects] = useState<ObjectSummary[]>([]);
   const [status, setStatus] = useState<Status | null>(null);
-  const [toasts, setToasts] = useState<Array<{ id: number; msg: string; kind: string }>>([]);
+  const [toasts, setToasts] = useState<Array<{ id: number; msg: string; kind: string; action?: ToastAction }>>([]);
 
   const refresh = useCallback(async () => {
     const [c, o, s] = await Promise.all([api.components(), api.objects(), api.status()]);
@@ -27,11 +33,14 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
     setStatus(s);
   }, []);
 
-  const toast = useCallback((msg: string, kind: "info" | "error" = "info") => {
+  const dismiss = useCallback((id: number) => setToasts((t) => t.filter((x) => x.id !== id)), []);
+
+  const toast = useCallback((msg: string, kind: "info" | "error" = "info", action?: ToastAction) => {
     const id = Date.now() + Math.random();
-    setToasts((t) => [...t, { id, msg, kind }]);
-    setTimeout(() => setToasts((t) => t.filter((x) => x.id !== id)), kind === "error" ? 9000 : 4000);
-  }, []);
+    setToasts((t) => [...t, { id, msg, kind, action }]);
+    // Toasts with an action stay long enough to use it.
+    setTimeout(() => dismiss(id), kind === "error" ? 9000 : action ? 10000 : 4000);
+  }, [dismiss]);
 
   useEffect(() => {
     refresh().catch((e) => toast(e.message, "error"));
@@ -45,7 +54,20 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
       {children}
       <div className={styles.toasts}>
         {toasts.map((t) => (
-          <div key={t.id} className={cx(styles.toast, t.kind === "error" && styles.toastError)}>{t.msg}</div>
+          <div key={t.id} className={cx(styles.toast, t.kind === "error" && styles.toastError)}>
+            {t.msg}
+            {t.action && (
+              <button
+                className={styles.toastAction}
+                onClick={async () => {
+                  dismiss(t.id);
+                  try { await t.action!.run(); } catch (e) { toast((e as Error).message, "error"); }
+                }}
+              >
+                {t.action.label}
+              </button>
+            )}
+          </div>
         ))}
       </div>
     </Ctx.Provider>

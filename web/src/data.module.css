@@ -6,3 +6,4 @@
   .toasts { left: 12px; right: 12px; bottom: calc(64px + env(safe-area-inset-bottom)); }
   .toast { max-width: none; }
 }
+.toastAction { margin-left: 12px; padding: 2px 10px; background: none; color: inherit; border: 1px solid currentColor; font-weight: 600; pointer-events: auto; }

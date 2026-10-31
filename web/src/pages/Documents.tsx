@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { api, thumbUrl } from "../api";
+import { allColumns, defaultColumns, DocumentTable, toCsv } from "../components/DocumentTable";
 import { cx } from "../cx";
 import { useAppData } from "../data";
 import ui from "../ui.module.css";
@@ -46,6 +47,15 @@ export function DocumentsPage() {
   const [warnings, setWarnings] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
   const [interpreting, setInterpreting] = useState(false);
+  /** Cards or a table; remembered on this device. */
+  const [view, setViewState] = useState<"cards" | "table">(() => (localStorage.getItem("docket.view") === "table" ? "table" : "cards"));
+  const setView = (v: "cards" | "table") => { localStorage.setItem("docket.view", v); setViewState(v); };
+  /** Field columns the owner picked for the table; null = chosen from the results. */
+  const [picked, setPickedState] = useState<string[] | null>(() => {
+    try { return JSON.parse(localStorage.getItem("docket.columns") ?? "null"); } catch { return null; }
+  });
+  const setPicked = (v: string[] | null) => { localStorage.setItem("docket.columns", JSON.stringify(v)); setPickedState(v); };
+  const [exporting, setExporting] = useState(false);
   /** Phones only: the filters fold away behind a button. */
   const [showFilters, setShowFilters] = useState(false);
 
@@ -71,9 +81,10 @@ export function DocumentsPage() {
       sort,
       semantic,
       limit: 60,
+      values: view === "table",
     }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [params.toString()],
+    [params.toString(), view],
   );
 
   useEffect(() => {
@@ -89,6 +100,35 @@ export function DocumentsPage() {
     if (!agg) { setAggResult(null); return; }
     api.aggregate(query, agg).then(setAggResult).catch((e) => { setAggResult(null); toast(e.message, "error"); });
   }, [query, agg, toast]);
+
+  const columnsAll = useMemo(() => allColumns(catalog), [catalog]);
+  const columns = useMemo(() => {
+    const paths = picked ?? defaultColumns(items, catalog);
+    return paths.map((p) => columnsAll.find((c) => c.path === p)).filter((c) => !!c);
+  }, [picked, items, catalog, columnsAll]);
+
+  /** Downloads every matching document (not just the loaded page) as CSV. */
+  const exportCsv = async () => {
+    setExporting(true);
+    try {
+      const all: DocumentSummary[] = [];
+      for (;;) {
+        const r = await api.searchDocuments({ ...query, values: true, limit: 200, offset: all.length });
+        all.push(...r.items);
+        if (!r.items.length || all.length >= r.total) break;
+      }
+      const blob = new Blob([toCsv(all, columns, catalog, objects)], { type: "text/csv;charset=utf-8" });
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = `docket-${new Date().toISOString().slice(0, 10)}.csv`;
+      a.click();
+      URL.revokeObjectURL(a.href);
+    } catch (e) {
+      toast((e as Error).message, "error");
+    } finally {
+      setExporting(false);
+    }
+  };
 
   const loadMore = async () => {
     const r = await api.searchDocuments({ ...query, offset: items.length });
@@ -216,6 +256,46 @@ export function DocumentsPage() {
           </label>
         )}
       </p>
+      <div className={styles.viewBar}>
+        <div className={styles.segmented} role="group" aria-label="View">
+          <button className={cx(view === "cards" && styles.segOn)} onClick={() => setView("cards")}>Cards</button>
+          <button className={cx(view === "table" && styles.segOn)} onClick={() => setView("table")}>Table</button>
+        </div>
+        {view === "table" && (
+          <details className={styles.columnsMenu}>
+            <summary className={cx(ui.button, ui.compact)}>Columns</summary>
+            <div className={styles.columnsList}>
+              <button className={cx(ui.link, ui.small)} onClick={() => setPicked(null)} disabled={picked === null}>Automatic (from the results)</button>
+              {catalog.filter((c) => c.fields.some((f) => f.type !== "longtext")).map((c) => (
+                <fieldset key={c.key} className={styles.columnGroup}>
+                  <legend>{c.name}</legend>
+                  {columnsAll.filter((x) => x.component.key === c.key).map((x) => (
+                    <label key={x.path} className={ui.inline}>
+                      <input
+                        type="checkbox"
+                        checked={columns.some((y) => y.path === x.path)}
+                        onChange={(e) => {
+                          const now = columns.map((y) => y.path);
+                          setPicked(e.target.checked ? [...now, x.path] : now.filter((p) => p !== x.path));
+                        }}
+                      />
+                      {x.field.label}
+                    </label>
+                  ))}
+                </fieldset>
+              ))}
+            </div>
+          </details>
+        )}
+        <button className={ui.compact} disabled={exporting || !total} onClick={exportCsv} title="Every matching document, with the table's columns">
+          {exporting ? "Exporting…" : "Export CSV"}
+        </button>
+        <span className={ui.spacer} />
+        <Link className={ui.small} to="/trash">Trash</Link>
+      </div>
+      {view === "table" ? (
+        <DocumentTable items={items} columns={columns} catalog={catalog} objects={objects} />
+      ) : (
       <div className={styles.grid}>
         {items.map((d) => (
           <Link key={d.id} to={`/documents/${d.id}`} className={styles.card}>
@@ -235,6 +315,7 @@ export function DocumentsPage() {
           </Link>
         ))}
       </div>
+      )}
       {items.length < total && <button onClick={loadMore}>Load more</button>}
     </div>
   );

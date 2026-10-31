@@ -5,6 +5,7 @@ import { HttpError } from "../errors.ts";
 import type { AggregateResult, AggregateSpec, DocumentStatus, DocumentSummary } from "../shared/types.ts";
 import { componentsByKey } from "./components.ts";
 import { embedQuery, semanticAvailable, toVectorLiteral } from "./embeddings.ts";
+import { loadComponents } from "./entities.ts";
 import { normalizeDraftValue } from "./values.ts";
 
 export interface SearchParams {
@@ -23,6 +24,8 @@ export interface SearchParams {
   semantic?: boolean;
   limit?: number;
   offset?: number;
+  /** Include each document's component values (for table views and exports). */
+  values?: boolean;
 }
 
 type Frag = PendingQuery<Row[]>;
@@ -39,6 +42,8 @@ const RRF_K = 60;
 async function filterConditions(p: SearchParams): Promise<{ where: Frag }> {
   const conds: Frag[] = [];
   if (p.status?.length) conds.push(sql`d.status = any(${p.status}::text[])`);
+  // The trash only shows up when asked for by name.
+  else conds.push(sql`d.status <> 'trashed'`);
   for (const key of p.components ?? []) {
     conds.push(sql`exists (select 1 from component_instance ci join component_def cd on cd.id = ci.component_id
                            where ci.entity_id = e.id and cd.key = ${key})`);
@@ -148,10 +153,12 @@ export async function searchDocuments(p: SearchParams): Promise<{ total: number;
       limit ${limit} offset ${offset}`;
   }
 
+  const values = p.values ? await loadComponents(sql, rows.map((r) => r.id)) : null;
   return {
     total: rows[0]?.total ?? 0,
     semantic: !!qvec,
     items: rows.map(({ total: _t, chunk, text_hit, meaning_hit, ...r }) => ({
+      ...(values ? { values: values.get(r.id) ?? [] } : {}),
       ...r,
       components: r.components ?? [],
       proposed: r.proposed ?? undefined,
