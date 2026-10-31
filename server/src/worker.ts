@@ -1,7 +1,7 @@
-import { config } from "./config.js";
-import { sql } from "./db.js";
-import { aiAvailable, analyzeDocument } from "./services/ai.js";
-import { runOcr } from "./services/ocr.js";
+import { config } from "./config.ts";
+import { sql } from "./db.ts";
+import { aiAvailable, analyzeDocument } from "./services/ai.ts";
+import { runOcr } from "./services/ocr.ts";
 
 const MAX_ATTEMPTS = 3;
 /** A job locked longer than this is assumed to belong to a crashed worker. */

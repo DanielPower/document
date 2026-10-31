@@ -5,12 +5,12 @@ import Fastify from "fastify";
 import multipart from "@fastify/multipart";
 import fastifyStatic from "@fastify/static";
 import { ZodError } from "zod";
-import { config } from "./config.js";
-import { HttpError } from "./errors.js";
-import { migrate } from "./migrate.js";
-import { apiRoutes } from "./routes/api.js";
-import { startConsumeWatcher } from "./services/ingest.js";
-import { startWorker } from "./worker.js";
+import { config } from "./config.ts";
+import { HttpError } from "./errors.ts";
+import { migrate } from "./migrate.ts";
+import { apiRoutes } from "./routes/api.ts";
+import { startConsumeWatcher } from "./services/ingest.ts";
+import { startWorker } from "./worker.ts";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 

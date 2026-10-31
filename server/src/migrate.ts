@@ -1,7 +1,7 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { sql } from "./db.js";
+import { sql } from "./db.ts";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 

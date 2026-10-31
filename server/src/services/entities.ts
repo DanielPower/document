@@ -1,8 +1,8 @@
-import type { Tx } from "../db.js";
-import { HttpError } from "../errors.js";
-import type { ComponentDef, Draft, DraftComponent, DraftValue } from "../shared/types.js";
-import { componentsByKey, createComponent } from "./components.js";
-import { formatValue, fromStored, normalizeDraftValue, toStored, type StoredValue } from "./values.js";
+import type { Tx } from "../db.ts";
+import { HttpError } from "../errors.ts";
+import type { ComponentDef, Draft, DraftComponent, DraftValue } from "../shared/types.ts";
+import { componentsByKey, createComponent } from "./components.ts";
+import { formatValue, fromStored, normalizeDraftValue, toStored, type StoredValue } from "./values.ts";
 
 interface ValueRow extends StoredValue {
   entity_id: string;

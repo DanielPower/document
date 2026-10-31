@@ -1,9 +1,9 @@
 import type { PendingQuery, Row } from "postgres";
-import { sql } from "../db.js";
-import { HttpError } from "../errors.js";
-import type { DocumentStatus, DocumentSummary } from "../shared/types.js";
-import { componentsByKey } from "./components.js";
-import { normalizeDraftValue } from "./values.js";
+import { sql } from "../db.ts";
+import { HttpError } from "../errors.ts";
+import type { DocumentStatus, DocumentSummary } from "../shared/types.ts";
+import { componentsByKey } from "./components.ts";
+import { normalizeDraftValue } from "./values.ts";
 
 export interface SearchParams {
   q?: string;

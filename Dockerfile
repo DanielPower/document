@@ -1,16 +1,16 @@
-# ---- build ---------------------------------------------------------------
-FROM node:22-bookworm-slim AS build
+# ---- build the web UI ---------------------------------------------------------------
+FROM node:24-bookworm-slim AS build
 WORKDIR /app
 COPY package.json package-lock.json ./
 COPY server/package.json server/
 COPY web/package.json web/
 RUN npm ci
-COPY server server
+COPY server/src/shared server/src/shared
 COPY web web
 RUN npm run build
 
 # ---- runtime -------------------------------------------------------------
-FROM node:22-bookworm-slim
+FROM node:24-bookworm-slim
 # Extra Tesseract languages, e.g. --build-arg TESSERACT_LANGS="fra deu"
 ARG TESSERACT_LANGS=""
 RUN apt-get update \
@@ -24,9 +24,10 @@ COPY package.json package-lock.json ./
 COPY server/package.json server/
 COPY web/package.json web/
 RUN npm ci --omit=dev --workspace server && npm cache clean --force
-COPY --from=build /app/server/dist server/dist
+COPY server/src server/src
 COPY --from=build /app/web/dist web/dist
 VOLUME ["/data", "/consume"]
 EXPOSE 8080
 USER node
-CMD ["node", "server/dist/index.js"]
+# Node 24 runs the TypeScript sources directly (type stripping); there is no server build step.
+CMD ["node", "server/src/index.ts"]

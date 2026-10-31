@@ -1,6 +1,6 @@
-import { sql, type Tx } from "../db.js";
-import { FIELD_TYPES, type ComponentDef, type ComponentInput, type FieldDef } from "../shared/types.js";
-import { HttpError } from "../errors.js";
+import { sql, type Tx } from "../db.ts";
+import { FIELD_TYPES, type ComponentDef, type ComponentInput, type FieldDef } from "../shared/types.ts";
+import { HttpError } from "../errors.ts";
 
 const KEY_RE = /^[a-z][a-z0-9_]*$/;
 

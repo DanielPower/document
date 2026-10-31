@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { normalizeDraftValue, parseDate, parseNumber } from "../src/services/values.js";
+import { normalizeDraftValue, parseDate, parseNumber } from "../src/services/values.ts";
 
 test("parseNumber handles currency formats", () => {
   assert.equal(parseNumber("$1,234.56"), 1234.56);

@@ -1,4 +1,4 @@
-import type { DraftValue, FieldDef } from "../shared/types.js";
+import type { DraftValue, FieldDef } from "../shared/types.ts";
 
 export interface StoredValue {
   value_text: string | null;

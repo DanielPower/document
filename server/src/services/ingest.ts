@@ -1,9 +1,9 @@
 import crypto from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
-import { config } from "../config.js";
-import { sql } from "../db.js";
-import { HttpError } from "../errors.js";
+import { config } from "../config.ts";
+import { sql } from "../db.ts";
+import { HttpError } from "../errors.ts";
 
 const EXT_BY_MIME: Record<string, string> = {
   "application/pdf": ".pdf",

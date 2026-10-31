@@ -3,8 +3,8 @@ import path from "node:path";
 import Anthropic from "@anthropic-ai/sdk";
 import { betaZodOutputFormat } from "@anthropic-ai/sdk/helpers/beta/zod";
 import { z } from "zod";
-import { config } from "../config.js";
-import { sql } from "../db.js";
+import { config } from "../config.ts";
+import { sql } from "../db.ts";
 import {
   FIELD_TYPES,
   type ComponentDef,
@@ -13,10 +13,10 @@ import {
   type DraftComponent,
   type FieldDef,
   type Proposal,
-} from "../shared/types.js";
-import { listComponents, validateComponentInput } from "./components.js";
-import { describeComponents, loadComponents, refTitles } from "./entities.js";
-import { isUuid, normalizeDraftValue, parseDate } from "./values.js";
+} from "../shared/types.ts";
+import { listComponents, validateComponentInput } from "./components.ts";
+import { describeComponents, loadComponents, refTitles } from "./entities.ts";
+import { isUuid, normalizeDraftValue, parseDate } from "./values.ts";
 
 let client: Anthropic | null = null;
 function anthropic(): Anthropic {

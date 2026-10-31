@@ -23,7 +23,7 @@ Because filed documents are used as examples, the AI picks up your conventions a
 
 ## Running it
 
-You need Postgres 13+ (for `gen_random_uuid()`) and Docker.
+You need Postgres 13+ (for `gen_random_uuid()`) and Docker. The image uses Node 24.
 
 ```bash
 cp .env.example .env    # set DATABASE_URL and ANTHROPIC_API_KEY
@@ -97,19 +97,27 @@ group by 1, 2 order by 1, 2;
 
 ## Development
 
+Requires Node 24 or newer. The server has no build step: Node runs the TypeScript sources directly using [type stripping](https://nodejs.org/api/typescript.html#type-stripping). That means the server code must use erasable TypeScript only (no `enum`, `namespace`, or constructor parameter properties), and relative imports use `.ts` extensions. `tsconfig.json` sets `erasableSyntaxOnly`, so `npm run typecheck` reports violations. `tsc` is only used for type checking.
+
 ```bash
 npm install
 ```
 
 ```bash
-DATABASE_URL=postgres://localhost/docket npm run dev --workspace server
+cp .env.example .env    # the server scripts load ./.env when it exists
+```
+
+```bash
+npm run dev --workspace server
 ```
 
 ```bash
 npm run dev --workspace web
 ```
 
-The Vite dev server proxies `/api` to `localhost:8080`. The local machine needs `ocrmypdf`, `tesseract`, and `poppler-utils` on the PATH (or set `OCRMYPDF_BIN`). Run the unit tests with `npm test --workspace server`, and typecheck both workspaces with `npm run typecheck`.
+The Vite dev server proxies `/api` to `localhost:8080`. The local machine needs `ocrmypdf`, `tesseract`, and `poppler-utils` on the PATH (or set `OCRMYPDF_BIN`). Run the unit tests with `npm test`, and typecheck both workspaces with `npm run typecheck`.
+
+`.env` is read in two places: Docker Compose passes it into the container (`env_file` in `docker-compose.yml`), and the server's npm scripts pass it to Node with `--env-file-if-exists`. Variables already set in the environment take precedence over the file.
 
 ### Layout
 

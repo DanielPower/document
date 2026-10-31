@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { FIELD_TYPES } from "../shared/types.js";
+import { FIELD_TYPES } from "../shared/types.ts";
 
 export const FieldInputSchema = z.object({
   id: z.string().uuid().optional(),
