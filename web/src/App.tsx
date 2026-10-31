@@ -2,6 +2,7 @@ import { useRef, useState, type DragEvent } from "react";
 import { NavLink, Route, Routes, useNavigate } from "react-router-dom";
 import { api } from "./api";
 import { AppDataProvider, useAppData } from "./data";
+import { AskPage } from "./pages/Ask";
 import { ComponentsPage } from "./pages/Components";
 import { DocumentPage } from "./pages/DocumentPage";
 import { DocumentsPage } from "./pages/Documents";
@@ -65,6 +66,7 @@ function Shell() {
             {processing > 0 && <span className="count processing" title="Processing">{processing}…</span>}
           </NavLink>
           <NavLink to="/documents">Documents</NavLink>
+          {status?.ai && <NavLink to="/ask">Ask</NavLink>}
           <NavLink to="/objects">Objects</NavLink>
           <NavLink to="/components">Components</NavLink>
         </nav>
@@ -86,6 +88,7 @@ function Shell() {
           <Route path="/inbox/:id" element={<InboxPage />} />
           <Route path="/documents" element={<DocumentsPage />} />
           <Route path="/documents/:id" element={<DocumentPage />} />
+          <Route path="/ask" element={<AskPage />} />
           <Route path="/objects" element={<ObjectsPage />} />
           <Route path="/objects/:id" element={<ObjectPage />} />
           <Route path="/components" element={<ComponentsPage />} />

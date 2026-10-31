@@ -104,6 +104,8 @@ export interface DocumentSummary {
   hasThumb: boolean;
   components: string[];
   snippet?: string;
+  /** Why a text search matched: the words, the meaning (embeddings), or both. */
+  match?: "text" | "meaning" | "both";
   error: string | null;
 }
 
@@ -127,4 +129,43 @@ export interface ObjectSummary {
 
 export interface ObjectDetail extends ObjectSummary {
   current: Draft;
+}
+
+export interface AggregateSpec {
+  fn: "count" | "sum" | "avg" | "min" | "max";
+  /** For anything but count: a number or money field. */
+  component?: string;
+  field?: string;
+  groupBy: "none" | "year" | "month" | "object";
+}
+
+export interface AggregateResult {
+  label: string;
+  /** Currency for money fields. */
+  unit: string | null;
+  groupBy: AggregateSpec["groupBy"];
+  rows: Array<{ group: string | null; value: number | null; documents: number }>;
+}
+
+/** The structured search an AI-interpreted question turned into. */
+export interface InterpretedSearch {
+  q: string | null;
+  components: string[];
+  where: string[];
+  ref: string | null;
+  from: string | null;
+  to: string | null;
+  sort: "relevance" | "date" | "added" | "title";
+  aggregate: AggregateSpec | null;
+  explanation: string;
+  /** Parts of the model's answer that didn't check out and were dropped. */
+  warnings: string[];
+}
+
+export interface AskResponse {
+  answer: string;
+  /** Documents the answer cites, in order of first citation. */
+  citations: Array<{ id: string; title: string; documentDate: string | null }>;
+  /** What the assistant looked up, for transparency. */
+  steps: string[];
 }

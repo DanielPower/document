@@ -1,5 +1,9 @@
 import type {
+  AggregateResult,
+  AggregateSpec,
+  AskResponse,
   ComponentDef,
+  InterpretedSearch,
   ComponentInput,
   DocumentDetail,
   DocumentSummary,
@@ -23,6 +27,7 @@ async function request<T>(method: string, url: string, body?: unknown): Promise<
 export interface Status {
   ai: boolean;
   model: string;
+  semantic: { available: boolean; reason: string; model: string };
   counts: Record<string, number>;
 }
 
@@ -35,6 +40,7 @@ export interface SearchQuery {
   from?: string;
   to?: string;
   sort?: string;
+  semantic?: boolean;
   limit?: number;
   offset?: number;
 }
@@ -42,7 +48,8 @@ export interface SearchQuery {
 function qs(params: SearchQuery): string {
   const u = new URLSearchParams();
   for (const [k, v] of Object.entries(params)) {
-    if (v === undefined || v === "" || (Array.isArray(v) && !v.length)) continue;
+    if (v === undefined || v === "" || v === true || (Array.isArray(v) && !v.length)) continue;
+    if (v === false) { u.set(k, "0"); continue; }
     if (Array.isArray(v)) {
       if (k === "where") v.forEach((x) => u.append(k, x));
       else u.set(k, v.join(","));
@@ -54,7 +61,11 @@ function qs(params: SearchQuery): string {
 export const api = {
   status: () => request<Status>("GET", "/api/status"),
 
-  searchDocuments: (p: SearchQuery) => request<{ total: number; items: DocumentSummary[] }>("GET", `/api/documents?${qs(p)}`),
+  searchDocuments: (p: SearchQuery) =>
+    request<{ total: number; items: DocumentSummary[]; semantic: boolean }>("GET", `/api/documents?${qs(p)}`),
+  aggregate: (p: SearchQuery, spec: AggregateSpec) => request<AggregateResult>("POST", `/api/documents/aggregate?${qs(p)}`, spec),
+  interpret: (question: string) => request<InterpretedSearch>("POST", "/api/ai/interpret", { question }),
+  ask: (question: string) => request<AskResponse>("POST", "/api/ai/ask", { question }),
   getDocument: (id: string) => request<DocumentDetail>("GET", `/api/documents/${id}`),
   saveDocument: (id: string, draft: Draft, file: boolean) => request<{ ok: true }>("PUT", `/api/documents/${id}/draft`, { draft, file }),
   reanalyze: (id: string, ocr = false) => request<{ ok: true }>("POST", `/api/documents/${id}/reanalyze`, { ocr }),

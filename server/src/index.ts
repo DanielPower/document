@@ -11,6 +11,7 @@ import { migrate } from "./migrate.ts";
 import { apiRoutes } from "./routes/api.ts";
 import { startConsumeWatcher } from "./services/ingest.ts";
 import { checkOcrTools } from "./services/ocr.ts";
+import { startSemantic } from "./services/embeddings.ts";
 import { startWorker } from "./worker.ts";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -45,6 +46,7 @@ async function main() {
   }
 
   const log = (m: string) => app.log.info(m);
+  startSemantic(log, config.runWorker);
   if (config.runWorker) {
     for (const problem of await checkOcrTools()) {
       app.log.warn(`OCR will fail until this is fixed: ${problem}`);

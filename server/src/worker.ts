@@ -2,6 +2,7 @@ import { config } from "./config.ts";
 import { sql } from "./db.ts";
 import { aiAvailable, analyzeDocument } from "./services/ai.ts";
 import { MissingToolError, runOcr } from "./services/ocr.ts";
+import { kickEmbeddings } from "./services/embeddings.ts";
 
 const MAX_ATTEMPTS = 3;
 /** Wait before the next attempt, indexed by the number of attempts made so far. */
@@ -67,6 +68,8 @@ async function processJob(job: Job, log: (m: string) => void): Promise<void> {
   let proposalError: string | null = null;
   if (aiAvailable()) {
     await sql`update document set status = 'analyzing', locked_at = now() where entity_id = ${id}`;
+    // The text is ready: embed it for semantic search while the AI works.
+    kickEmbeddings();
     try {
       const proposal = await analyzeDocument(id);
       await sql`update document set proposal = ${sql.json(proposal as never)} where entity_id = ${id}`;
@@ -78,6 +81,8 @@ async function processJob(job: Job, log: (m: string) => void): Promise<void> {
     proposalError = config.ai.enabled ? "AI is not configured (set ANTHROPIC_API_KEY)." : null;
   }
   await sql`update document set status = 'inbox', locked_at = null, attempts = 0, error = ${proposalError} where entity_id = ${id}`;
+  // Also covers documents that skipped the AI step.
+  kickEmbeddings();
   log(`document ${id} ready in inbox`);
 }
 

@@ -187,3 +187,20 @@ mark { background: #fde68a; color: #1c1f24; padding: 0 1px; }
   .components-layout { grid-template-columns: 1fr; }
 }
 .draft-editor > button.link, .def-editor > button.small { align-self: flex-start; }
+
+/* AI search */
+.aggregate { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); padding: 10px 14px; margin-bottom: 10px; max-width: 560px; }
+.aggregate-head { display: flex; justify-content: space-between; align-items: center; }
+.aggregate-value { font-size: 22px; font-weight: 600; margin-top: 4px; }
+.aggregate table { border-collapse: collapse; margin-top: 6px; width: 100%; }
+.aggregate th, .aggregate td { text-align: left; padding: 4px 12px 4px 0; border-bottom: 1px solid var(--border); }
+.aggregate td:nth-child(2) { font-variant-numeric: tabular-nums; }
+.match-note { color: #7c3aed; }
+.ask form { margin: 12px 0 20px; }
+.ask .actions { flex-wrap: wrap; }
+.exchange { border-top: 1px solid var(--border); padding: 14px 0; }
+.question { font-weight: 600; margin-bottom: 6px; }
+.answer p { margin: 0 0 8px; line-height: 1.5; }
+.answer ul { margin: 0 0 8px; padding-left: 20px; line-height: 1.5; }
+.cite { display: inline-block; font-size: 11px; line-height: 1; padding: 2px 5px; margin: 0 2px; border-radius: 8px; background: color-mix(in srgb, var(--accent) 15%, transparent); vertical-align: super; }
+.citations { font-size: 13px; padding-left: 20px; margin: 8px 0; }

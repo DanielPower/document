@@ -9,7 +9,9 @@ import { aiAvailable, generateComponent } from "../services/ai.ts";
 import { createComponent, deleteComponent, listComponents, updateComponent } from "../services/components.ts";
 import { applyDraft, describeComponents, loadComponents, loadDraft, refTitles } from "../services/entities.ts";
 import { deleteDocument, ingestBuffer } from "../services/ingest.ts";
-import { searchDocuments } from "../services/search.ts";
+import { aggregateDocuments, searchDocuments, type SearchParams } from "../services/search.ts";
+import { askQuestion, interpretQuestion } from "../services/ai-query.ts";
+import { refreshTitleChunk, semanticStatus } from "../services/embeddings.ts";
 import { isUuid } from "../services/values.ts";
 import type { DocumentDetail, DocumentStatus, ObjectDetail, ObjectSummary, Proposal } from "../shared/types.ts";
 import { ComponentInputSchema, DraftSchema } from "./schemas.ts";
@@ -24,6 +26,7 @@ export async function apiRoutes(app: FastifyInstance) {
     return {
       ai: aiAvailable(),
       model: config.ai.model,
+      semantic: semanticStatus(),
       counts: Object.fromEntries(counts.map((c) => [c.status, c.n])),
     };
   });
@@ -43,20 +46,33 @@ export async function apiRoutes(app: FastifyInstance) {
     return { results };
   });
 
-  app.get("/api/documents", async (req) => {
-    const q = req.query as Record<string, unknown>;
-    return searchDocuments({
-      q: q.q as string | undefined,
-      status: asArray(q.status) as DocumentStatus[] | undefined,
-      components: asArray(q.component),
-      ref: q.ref && isUuid(String(q.ref)) ? String(q.ref) : undefined,
-      where: asArray(q.where),
-      from: q.from as string | undefined,
-      to: q.to as string | undefined,
-      sort: q.sort as never,
-      limit: q.limit ? Number(q.limit) : undefined,
-      offset: q.offset ? Number(q.offset) : undefined,
-    });
+  const searchParams = (q: Record<string, unknown>): SearchParams => ({
+    q: q.q as string | undefined,
+    status: asArray(q.status) as DocumentStatus[] | undefined,
+    components: asArray(q.component),
+    ref: q.ref && isUuid(String(q.ref)) ? String(q.ref) : undefined,
+    where: asArray(q.where),
+    from: q.from as string | undefined,
+    to: q.to as string | undefined,
+    sort: q.sort as never,
+    limit: q.limit ? Number(q.limit) : undefined,
+    offset: q.offset ? Number(q.offset) : undefined,
+    semantic: q.semantic !== "0" && q.semantic !== false,
+  });
+
+  app.get("/api/documents", async (req) => searchDocuments(searchParams(req.query as Record<string, unknown>)));
+
+  const AggregateBody = z.object({
+    fn: z.enum(["count", "sum", "avg", "min", "max"]),
+    component: z.string().optional(),
+    field: z.string().optional(),
+    groupBy: z.enum(["none", "year", "month", "object"]).default("none"),
+  });
+
+  /** Totals over the documents matching the same filters as GET /api/documents (passed as the query string). */
+  app.post("/api/documents/aggregate", async (req) => {
+    const spec = AggregateBody.parse(req.body);
+    return aggregateDocuments(searchParams(req.query as Record<string, unknown>), spec);
   });
 
   app.get("/api/documents/:id", async (req): Promise<DocumentDetail> => {
@@ -121,6 +137,8 @@ export async function apiRoutes(app: FastifyInstance) {
       if (body.file) await tx`update document set status = 'filed', proposal = null, error = null where entity_id = ${id}`;
       return r;
     });
+    // The title is embedded for semantic search; refresh it in the background.
+    refreshTitleChunk(id).catch((err) => req.log.warn(`title embedding failed: ${(err as Error).message}`));
     return { ok: true, ...result };
   });
 
@@ -174,6 +192,20 @@ export async function apiRoutes(app: FastifyInstance) {
     if (!aiAvailable()) throw new HttpError(503, "AI is not configured (set ANTHROPIC_API_KEY).");
     const { description } = z.object({ description: z.string().min(3) }).parse(req.body);
     return generateComponent(description);
+  });
+
+  const Question = z.object({ question: z.string().trim().min(2).max(2000) });
+
+  /** Turns a natural-language question into structured search filters (and an optional total). */
+  app.post("/api/ai/interpret", async (req) => {
+    if (!aiAvailable()) throw new HttpError(503, "AI is not configured (set ANTHROPIC_API_KEY).");
+    return interpretQuestion(Question.parse(req.body).question);
+  });
+
+  /** Answers a question about the archive, citing the documents used. */
+  app.post("/api/ai/ask", async (req) => {
+    if (!aiAvailable()) throw new HttpError(503, "AI is not configured (set ANTHROPIC_API_KEY).");
+    return askQuestion(Question.parse(req.body).question);
   });
 
   // ---------------------------------------------------------------- objects

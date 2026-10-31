@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { api, thumbUrl } from "../api";
 import { useAppData } from "../data";
-import type { ComponentDef, DocumentSummary, ObjectSummary } from "../types";
+import type { AggregateResult, AggregateSpec, ComponentDef, DocumentSummary, ObjectSummary } from "../types";
 
 const OPS_BY_TYPE: Record<string, Array<[string, string]>> = {
   number: [["eq", "="], ["gt", ">"], ["gte", "≥"], ["lt", "<"], ["lte", "≤"], ["set", "has value"], ["empty", "is empty"]],
@@ -13,24 +13,44 @@ const OPS_BY_TYPE: Record<string, Array<[string, string]>> = {
 };
 const opsFor = (type: string) => OPS_BY_TYPE[type === "money" ? "number" : type === "longtext" || type === "select" ? "text" : type] ?? OPS_BY_TYPE.text;
 
-/** Search state lives in the URL so searches can be bookmarked. */
+/** Search state lives in the URL so searches (including AI-interpreted ones) can be bookmarked. */
 export function DocumentsPage() {
-  const { catalog, objects, toast } = useAppData();
+  const { catalog, objects, status: appStatus, toast } = useAppData();
   const [params, setParams] = useSearchParams();
   const q = params.get("q") ?? "";
   const components = params.getAll("c");
   const where = params.getAll("w");
   const status = params.get("status") ?? "filed";
   const ref = params.get("ref") ?? "";
+  const from = params.get("from") ?? "";
+  const to = params.get("to") ?? "";
+  const semantic = params.get("sem") !== "0";
   const sort = params.get("sort") ?? (q ? "relevance" : "date");
+  const explanation = params.get("explain");
+  const aggParam = params.get("agg");
+  const agg = useMemo<AggregateSpec | null>(() => {
+    try {
+      return aggParam ? (JSON.parse(aggParam) as AggregateSpec) : null;
+    } catch {
+      return null;
+    }
+  }, [aggParam]);
   const [text, setText] = useState(q);
   const [items, setItems] = useState<DocumentSummary[]>([]);
   const [total, setTotal] = useState(0);
+  const [usedSemantic, setUsedSemantic] = useState(false);
+  const [aggResult, setAggResult] = useState<AggregateResult | null>(null);
+  const [warnings, setWarnings] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
+  const [interpreting, setInterpreting] = useState(false);
 
-  const update = (mut: (p: URLSearchParams) => void) => {
+  useEffect(() => setText(q), [q]);
+
+  /** Any manual change to the filters means the AI's explanation no longer describes them. */
+  const update = (mut: (p: URLSearchParams) => void, keepExplanation = false) => {
     const p = new URLSearchParams(params);
     mut(p);
+    if (!keepExplanation) p.delete("explain");
     setParams(p, { replace: true });
   };
 
@@ -40,8 +60,11 @@ export function DocumentsPage() {
       component: components,
       where,
       ref: ref || undefined,
+      from: from || undefined,
+      to: to || undefined,
       status: status === "all" ? undefined : [status],
       sort,
+      semantic,
       limit: 60,
     }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -51,33 +74,88 @@ export function DocumentsPage() {
   useEffect(() => {
     setLoading(true);
     api.searchDocuments(query)
-      .then((r) => { setItems(r.items); setTotal(r.total); })
+      .then((r) => { setItems(r.items); setTotal(r.total); setUsedSemantic(r.semantic); })
       .catch((e) => toast(e.message, "error"))
       .finally(() => setLoading(false));
   }, [query, toast]);
+
+  // Totals follow the current filters, so editing a filter updates them.
+  useEffect(() => {
+    if (!agg) { setAggResult(null); return; }
+    api.aggregate(query, agg).then(setAggResult).catch((e) => { setAggResult(null); toast(e.message, "error"); });
+  }, [query, agg, toast]);
 
   const loadMore = async () => {
     const r = await api.searchDocuments({ ...query, offset: items.length });
     setItems([...items, ...r.items]);
   };
 
+  /** Sends the search box text to the AI and replaces the filters with its interpretation. */
+  const interpret = async () => {
+    if (!text.trim()) return;
+    setInterpreting(true);
+    try {
+      const r = await api.interpret(text.trim());
+      const p = new URLSearchParams();
+      if (r.q) p.set("q", r.q);
+      r.components.forEach((c) => p.append("c", c));
+      r.where.forEach((w) => p.append("w", w));
+      if (r.ref) p.set("ref", r.ref);
+      if (r.from) p.set("from", r.from);
+      if (r.to) p.set("to", r.to);
+      p.set("status", "all");
+      p.set("sort", r.sort);
+      if (r.aggregate) p.set("agg", JSON.stringify(r.aggregate));
+      p.set("explain", r.explanation);
+      setWarnings(r.warnings);
+      setParams(p);
+    } catch (e) {
+      toast((e as Error).message, "error");
+    } finally {
+      setInterpreting(false);
+    }
+  };
+
+  const hasFilters = !!(q || components.length || where.length || ref || from || to || agg);
+
   return (
     <div className="page documents">
       <form className="searchbar" onSubmit={(e) => { e.preventDefault(); update((p) => (text ? p.set("q", text) : p.delete("q"))); }}>
-        <input value={text} onChange={(e) => setText(e.target.value)} placeholder='Search text, e.g. brake "kingsway auto" -oil' autoFocus />
-        <select value={status} onChange={(e) => update((p) => p.set("status", e.target.value))}>
+        <input
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+          placeholder={appStatus?.ai ? 'Search, or ask: "unpaid house bills this year"' : 'Search text, e.g. brake "kingsway auto" -oil'}
+          autoFocus
+        />
+        <select value={status} onChange={(e) => update((p) => p.set("status", e.target.value), true)}>
           <option value="filed">Filed</option>
           <option value="inbox">In inbox</option>
           <option value="all">All</option>
         </select>
-        <select value={sort} onChange={(e) => update((p) => p.set("sort", e.target.value))}>
+        <select value={sort} onChange={(e) => update((p) => p.set("sort", e.target.value), true)}>
           {q && <option value="relevance">Best match</option>}
           <option value="date">Document date</option>
           <option value="added">Recently added</option>
           <option value="title">Title</option>
         </select>
         <button className="primary">Search</button>
+        {appStatus?.ai && (
+          <button type="button" disabled={interpreting || !text.trim()} onClick={interpret} title="Let AI turn your question into filters">
+            {interpreting ? "Thinking…" : "Ask AI"}
+          </button>
+        )}
       </form>
+
+      {explanation && (
+        <div className="ai-note">
+          <div className="ai-note-head">AI interpreted your question as</div>
+          <p>{explanation}</p>
+          {warnings.length > 0 && <p className="small muted">{warnings.join(" ")}</p>}
+          <p className="small muted">The filters below are what's actually applied; change any of them to refine.</p>
+        </div>
+      )}
+
+      {agg && aggResult && <AggregatePanel result={aggResult} onRemove={() => update((p) => p.delete("agg"), true)} />}
 
       <div className="filters">
         <span className="muted small">Has:</span>
@@ -101,6 +179,13 @@ export function DocumentsPage() {
           <option value="">Linked to any object</option>
           {objects.map((o) => <option key={o.id} value={o.id}>Linked to {o.title}</option>)}
         </select>
+        <label className="inline small muted">
+          From <input type="date" value={from} onChange={(e) => update((p) => (e.target.value ? p.set("from", e.target.value) : p.delete("from")))} />
+        </label>
+        <label className="inline small muted">
+          to <input type="date" value={to} onChange={(e) => update((p) => (e.target.value ? p.set("to", e.target.value) : p.delete("to")))} />
+        </label>
+        {hasFilters && <button className="link small" onClick={() => { setText(""); setParams(new URLSearchParams()); }}>Clear all</button>}
       </div>
 
       <FieldFilters
@@ -110,7 +195,15 @@ export function DocumentsPage() {
         onChange={(w) => update((p) => { p.delete("w"); w.forEach((x) => p.append("w", x)); })}
       />
 
-      <p className="muted small">{loading ? "Searching…" : `${total} document${total === 1 ? "" : "s"}`}</p>
+      <p className="muted small">
+        {loading ? "Searching…" : `${total} document${total === 1 ? "" : "s"}`}
+        {q && appStatus?.semantic.available && (
+          <label className="inline" style={{ display: "inline-flex", marginLeft: 12 }} title="Also find documents that match by meaning, not just by words">
+            <input type="checkbox" checked={semantic} onChange={(e) => update((p) => (e.target.checked ? p.delete("sem") : p.set("sem", "0")), true)} />
+            match by meaning{q && semantic && !usedSemantic && !loading ? " (unavailable right now)" : ""}
+          </label>
+        )}
+      </p>
       <div className="grid">
         {items.map((d) => (
           <Link key={d.id} to={`/documents/${d.id}`} className="card">
@@ -124,12 +217,41 @@ export function DocumentsPage() {
                   return <span key={i} className="badge" style={{ background: c?.color }}>{c?.name ?? k}</span>;
                 })}
               </div>
+              {d.match === "meaning" && <div className="match-note small">Similar meaning; the words don't appear</div>}
               {d.snippet && <div className="snippet" dangerouslySetInnerHTML={{ __html: sanitizeSnippet(d.snippet) }} />}
             </div>
           </Link>
         ))}
       </div>
       {items.length < total && <button onClick={loadMore}>Load more</button>}
+    </div>
+  );
+}
+
+function AggregatePanel({ result, onRemove }: { result: AggregateResult; onRemove: () => void }) {
+  const fmt = (v: number | null) =>
+    v === null ? "—" : `${v.toLocaleString(undefined, { minimumFractionDigits: result.unit ? 2 : 0, maximumFractionDigits: 2 })}${result.unit ? ` ${result.unit}` : ""}`;
+  const groupLabel = { none: "", year: "Year", month: "Month", object: "Linked to" }[result.groupBy];
+  return (
+    <div className="aggregate">
+      <div className="aggregate-head">
+        <strong>{result.label}</strong>
+        <button className="icon" title="Remove total" onClick={onRemove}>✕</button>
+      </div>
+      {result.groupBy === "none" ? (
+        <div className="aggregate-value">
+          {fmt(result.rows[0]?.value ?? 0)} <span className="muted small">over {result.rows[0]?.documents ?? 0} documents</span>
+        </div>
+      ) : (
+        <table>
+          <thead><tr><th>{groupLabel}</th><th>Value</th><th>Documents</th></tr></thead>
+          <tbody>
+            {result.rows.map((r, i) => (
+              <tr key={i}><td>{r.group ?? (result.groupBy === "object" ? "Not linked" : "No date")}</td><td>{fmt(r.value)}</td><td>{r.documents}</td></tr>
+            ))}
+          </tbody>
+        </table>
+      )}
     </div>
   );
 }
@@ -147,7 +269,10 @@ function FieldFilters(props: { where: string[]; onChange: (w: string[]) => void;
     if (!m) return w;
     const x = fields.find((y) => y.path === `${m[1]}.${m[2]}`);
     const opLabel = x ? opsFor(x.f.type).find(([o]) => o === m[3])?.[1] ?? m[3] : m[3];
-    const v = x?.f.type === "ref" ? objects.find((o) => o.id === m[4])?.title ?? m[4] : m[4];
+    const v =
+      x?.f.type === "ref" ? objects.find((o) => o.id === m[4])?.title ?? m[4] :
+      x?.f.type === "boolean" ? (m[4] === "true" ? "Yes" : m[4] === "false" ? "No" : m[4]) :
+      m[4];
     return `${x ? `${x.c.name} › ${x.f.label}` : `${m[1]}.${m[2]}`} ${opLabel} ${v ?? ""}`;
   };
   return (

@@ -73,21 +73,53 @@ create database docket owner docket;
 | `WORKER_CONCURRENCY` | `2` | Documents processed in parallel |
 | `DATA_DIR` / `CONSUME_DIR` | `/data` / `/consume` | Storage and drop folder |
 | `PUID` / `PGID` | `1000` | User and group the container runs as |
+| `AI_ASK_MAX_STEPS` | `8` | Most searches/reads the Ask assistant makes for one question |
+| `EMBEDDING_URL` | — | OpenAI-compatible embeddings API, e.g. `http://llama-swap:8080/v1`. Enables semantic search (also needs pgvector) |
+| `EMBEDDING_MODEL` | `qwen3-embedding-0.6b` | Model name sent to that API |
+| `EMBEDDING_API_KEY` | — | Sent as a bearer token, if the API needs one |
+| `EMBEDDING_QUERY_PREFIX` | Qwen3 instruction | Text put before search queries. Set it empty for models without one; `search_query: ` for nomic-embed |
+| `EMBEDDING_DOCUMENT_PREFIX` | empty | Text put before document chunks, e.g. `search_document: ` for nomic-embed |
+| `EMBEDDING_CHUNK_CHARS` | `1500` | Size of the text chunks that get embedded |
+| `SEMANTIC_MARGIN` | `0.05` | Documents within this similarity of the best match count as matches by meaning |
+| `SEMANTIC_MIN_SIMILARITY` | `0.15` | Nothing below this counts. Raise it if unrelated documents show up as "similar meaning" |
 
 ## Searching
 
 The Documents page combines:
 
 - full-text search over title, field values, linked object names, and OCR text (`websearch` syntax: `"exact phrase"`, `-exclude`, `or`)
-- "has component" filters
-- "linked to object" filters
+- **matching by meaning** (when semantic search is set up): "water damage" finds the plumber's leak repair, "car maintenance" finds oil changes. Results that match only by meaning are labelled. Keyword and meaning rankings are blended with reciprocal rank fusion, and a checkbox turns meaning off
+- "has component", "linked to object" and date-range filters
 - typed field filters, e.g. *Invoice › Total ≥ 500*, *Invoice › Paid is No*, *Insurance policy › End on/before 2026-01-01*
+
+**Ask AI** (the button next to Search) turns a question like "how much do I owe on unpaid house bills this year?" into those filters, plus a total when the question asks for one (sum, average, min, max or count, optionally per year, month or linked object). It shows how it read the question. The filters it sets are ordinary filters you can adjust, and the total follows them. Totals only use exact word matching, never "similar meaning", so they don't silently include loosely related documents.
+
+The **Ask** page answers questions from the documents' contents ("when does my home insurance renew, and what's the deductible?"). Claude searches, totals and reads documents with tools, then answers with numbered links to the documents it used. Citations are checked: only documents the tools actually returned can be cited. Each question costs a few model calls, up to `AI_ASK_MAX_STEPS`.
 
 The same filters are available over the API:
 
 ```
-GET /api/documents?q=brakes&component=invoice&where=invoice.total:gte:500&ref=<object id>
+GET  /api/documents?q=brakes&component=invoice&where=invoice.total:gte:500&ref=<object id>&from=2025-01-01
+POST /api/documents/aggregate?<same query>   {"fn": "sum", "component": "invoice", "field": "total", "groupBy": "year"}
+POST /api/ai/interpret                       {"question": "..."}
+POST /api/ai/ask                             {"question": "..."}
 ```
+
+### Semantic search setup
+
+Semantic search needs two things. Without them it stays off and everything else works.
+
+1. **The pgvector extension** in Docket's database. Install the package on the Postgres server (e.g. `postgresql-18-pgvector`), then run once as a superuser, connected to Docket's database:
+
+   ```sql
+   CREATE EXTENSION vector;
+   ```
+
+   Docket creates its table of document chunks itself, sized to the embedding model.
+
+2. **An embedding model** behind an OpenAI-compatible `/v1/embeddings` API, such as llama-swap/llama-server, Ollama, or a hosted service. Set `EMBEDDING_URL` and `EMBEDDING_MODEL`. The defaults suit Qwen3-Embedding served by llama-server with `--embedding --pooling last`.
+
+Documents are embedded in the background after OCR, and existing documents are embedded the first time semantic search turns on. If the embeddings API is unreachable, search falls back to keywords and Docket keeps retrying. Changing `EMBEDDING_MODEL` re-embeds everything; if the new model has different dimensions, the old vectors are dropped first. The status shown by `GET /api/status` (`semantic.reason`) explains why semantic search is off.
 
 Field values are stored in typed columns (`numeric`, `date`, `boolean`, `uuid` refs), so they're straightforward to query from SQL too. For example, maintenance spending per vehicle per year:
 
@@ -138,12 +170,14 @@ server/src/
   services/entities.ts      loading and applying drafts (the inbox, document, and object editors all use this)
   services/ai.ts            Claude prompts, structured-output schema, validation of the model's output
   services/ocr.ts           OCRmyPDF / pdftotext / thumbnails
-  services/search.ts        full-text and field filters
+  services/search.ts        full-text, semantic and field filters; totals
+  services/embeddings.ts    embeddings API client, pgvector table, background embedding job
+  services/ai-query.ts      Ask AI (question -> filters) and the Ask assistant (tool use)
   worker.ts                 queued -> ocr -> analyzing -> inbox (uses SELECT … FOR UPDATE SKIP LOCKED; no Redis)
   shared/types.ts           types shared with the web UI
 web/src/
   components/DraftEditor.tsx  the metadata editor used in the inbox, on documents, and on objects
-  pages/                      Inbox, Documents (search), Objects, Components
+  pages/                      Inbox, Documents (search), Ask, Objects, Components
 ```
 
 ### Data model notes

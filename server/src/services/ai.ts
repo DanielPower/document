@@ -19,13 +19,13 @@ import { describeComponents, loadComponents, refTitles } from "./entities.ts";
 import { isUuid, normalizeDraftValue, parseDate } from "./values.ts";
 
 let client: Anthropic | null = null;
-function anthropic(): Anthropic {
+export function anthropic(): Anthropic {
   // Credentials come from ANTHROPIC_API_KEY (or the other standard SDK sources).
   client ??= new Anthropic();
   return client;
 }
 
-const FALLBACK_BETA = "server-side-fallback-2026-07-01";
+export const FALLBACK_BETA = "server-side-fallback-2026-07-01";
 
 // ---------------------------------------------------------------------------
 // Output schemas. Values are strings so one static schema works for every
@@ -115,7 +115,7 @@ function describeField(f: FieldDef | ComponentInput["fields"][number]) {
   };
 }
 
-function catalogJson(components: ComponentDef[]) {
+export function catalogJson(components: ComponentDef[]) {
   return components.map((c) => ({
     key: c.key,
     name: c.name,
@@ -125,7 +125,7 @@ function catalogJson(components: ComponentDef[]) {
   }));
 }
 
-async function objectsForPrompt(catalog: Map<string, ComponentDef>) {
+export async function objectsForPrompt(catalog: Map<string, ComponentDef>) {
   const rows = await sql<{ id: string; title: string; notes: string }[]>`
     select id, title, notes from entity where kind = 'object' order by updated_at desc limit 500`;
   const comps = await loadComponents(sql, rows.map((r) => r.id));
