@@ -38,6 +38,8 @@ export interface ComponentDef {
   color: string;
   fields: FieldDef[];
   usage?: number;
+  /** How many documents (outside the trash) carry it. */
+  documentUsage?: number;
 }
 
 /** Input shape for creating/updating a component definition. Fields with an id are updated in place. */

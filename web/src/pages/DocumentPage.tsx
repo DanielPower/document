@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { api, fileUrl } from "../api";
 import { DraftEditor } from "../components/DraftEditor";
+import { DraftView } from "../components/DraftView";
 import { Preview, STATUS_LABEL, TextPreview } from "../components/Preview";
 import { cx } from "../cx";
 import { useAppData } from "../data";
@@ -17,13 +18,14 @@ export function DocumentPage() {
   const [draft, setDraft] = useState<Draft | null>(null);
   const [tab, setTab] = useState<"preview" | "text">("preview");
   const [busy, setBusy] = useState(false);
+  const [editing, setEditing] = useState(false);
 
   const load = async () => {
     const d = await api.getDocument(id!);
     setDoc(d);
     setDraft(structuredClone(d.current));
   };
-  useEffect(() => { load().catch((e) => toast(e.message, "error")); }, [id]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { setEditing(false); load().catch((e) => toast(e.message, "error")); }, [id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (!doc || !draft) return <div className={cx(ui.page, ui.muted)}>Loading…</div>;
 
@@ -68,39 +70,62 @@ export function DocumentPage() {
           {doc.originalFilename} · {STATUS_LABEL[doc.status]} · added {new Date(doc.addedAt).toLocaleDateString()}
           {doc.status === "inbox" && <> · <Link to={`/inbox/${doc.id}`}>review in inbox</Link></>}
         </div>
-        <DraftEditor draft={draft} onChange={setDraft} catalog={catalog} objects={objects} showDate selfId={doc.id} onSameAs={sameAs} />
-        <div className={ui.actions}>
-          <button
-            className={ui.primary}
-            disabled={busy}
-            onClick={async () => { if (await act(() => api.saveDocument(doc.id, draft, false), "Saved")) { await refresh(); await load(); } }}
-          >
-            Save
-          </button>
-          <button disabled={busy} onClick={() => setDraft(structuredClone(doc.current))}>Revert</button>
-          <span className={ui.spacer} />
-          <button
-            disabled={busy}
-            title="Send it back to the inbox with a fresh AI proposal"
-            onClick={async () => { if (await act(() => api.reanalyze(doc.id), "Sent to inbox for re-analysis")) navigate(`/inbox/${doc.id}`); }}
-          >
-            Re-analyze
-          </button>
-          <button
-            className={ui.danger}
-            disabled={busy}
-            onClick={async () => {
-              if (!(await act(() => api.deleteDocument(doc.id)))) return;
-              navigate("/documents");
-              toast("Moved to the trash", "info", {
-                label: "Undo",
-                run: async () => { await api.restoreDocument(doc.id); await refresh(); navigate(`/documents/${doc.id}`); },
-              });
-            }}
-          >
-            Move to trash
-          </button>
-        </div>
+        {editing ? (
+          <>
+            <DraftEditor draft={draft} onChange={setDraft} catalog={catalog} objects={objects} showDate selfId={doc.id} onSameAs={sameAs} />
+            <div className={ui.actions}>
+              <button
+                className={ui.primary}
+                disabled={busy}
+                onClick={async () => {
+                  if (!(await act(() => api.saveDocument(doc.id, draft, false), "Saved"))) return;
+                  await Promise.all([refresh(), load()]);
+                  setEditing(false);
+                }}
+              >
+                Save
+              </button>
+              <button disabled={busy} onClick={() => { setDraft(structuredClone(doc.current)); setEditing(false); }}>Cancel</button>
+            </div>
+          </>
+        ) : (
+          <>
+            <div className={styles.head}>
+              <div className={ui.grow}>
+                <h2 className={styles.title}>{doc.current.title}</h2>
+                <div className={cx(ui.muted, ui.small)}>{doc.current.documentDate ?? "No date"}</div>
+              </div>
+              <button className={ui.primary} onClick={() => setEditing(true)}>Edit</button>
+              <details className={styles.more}>
+                <summary className={ui.button} aria-label="More actions">⋯</summary>
+                <div className={styles.menu}>
+                  <button
+                    disabled={busy}
+                    title="Send it back to the inbox with a fresh AI proposal"
+                    onClick={async () => { if (await act(() => api.reanalyze(doc.id), "Sent to inbox for re-analysis")) navigate(`/inbox/${doc.id}`); }}
+                  >
+                    Re-analyze
+                  </button>
+                  <button
+                    className={ui.danger}
+                    disabled={busy}
+                    onClick={async () => {
+                      if (!(await act(() => api.deleteDocument(doc.id)))) return;
+                      navigate("/documents");
+                      toast("Moved to the trash", "info", {
+                        label: "Undo",
+                        run: async () => { await api.restoreDocument(doc.id); await refresh(); navigate(`/documents/${doc.id}`); },
+                      });
+                    }}
+                  >
+                    Move to trash
+                  </button>
+                </div>
+              </details>
+            </div>
+            <DraftView components={doc.current.components} catalog={catalog} objects={objects} />
+          </>
+        )}
       </section>
     </div>
   );

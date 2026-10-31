@@ -188,10 +188,21 @@ const ReadToolInput = z.object({
 
 const READ_CHARS = 12_000;
 
-export async function askQuestion(question: string): Promise<AskResponse> {
+/** An earlier question and answer in the same conversation, sent back by the client. */
+export interface AskTurn {
+  question: string;
+  answer: string;
+}
+
+/** Follow-ups see this many earlier turns at most. */
+const MAX_TURNS = 6;
+
+export async function askQuestion(question: string, history: AskTurn[] = []): Promise<AskResponse> {
   const ctx = await context();
   const steps: string[] = [];
-  const seen = new Set<string>();
+  const turns = history.slice(-MAX_TURNS);
+  // Documents cited in earlier answers can be cited again without looking them up.
+  const seen = new Set<string>(turns.flatMap((t) => [...t.answer.matchAll(/\[\[doc:([0-9a-f-]{36})\]\]/gi)].map((m) => m[1].toLowerCase())));
 
   const searchTool = betaZodTool({
     name: "search_documents",
@@ -289,7 +300,13 @@ export async function askQuestion(question: string): Promise<AskResponse> {
     output_config: { effort: config.ai.effort },
     system: [{ type: "text", text: askPrompt() }, ctx.block],
     tools: [searchTool, totalsTool, readTool],
-    messages: [{ role: "user", content: `Today is ${today()}.\n\n${question}` }],
+    messages: [
+      ...turns.flatMap((t, i) => [
+        { role: "user" as const, content: i === 0 ? `Today is ${today()}.\n\n${t.question}` : t.question },
+        { role: "assistant" as const, content: t.answer || "(no answer)" },
+      ]),
+      { role: "user", content: turns.length ? question : `Today is ${today()}.\n\n${question}` },
+    ],
   });
 
   checkStop(final);

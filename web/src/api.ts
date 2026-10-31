@@ -76,7 +76,7 @@ export const api = {
     request<{ total: number; items: DocumentSummary[]; semantic: boolean }>("GET", `/api/documents?${qs(p)}`),
   aggregate: (p: SearchQuery, spec: AggregateSpec) => request<AggregateResult>("POST", `/api/documents/aggregate?${qs(p)}`, spec),
   interpret: (question: string) => request<InterpretedSearch>("POST", "/api/ai/interpret", { question }),
-  ask: (question: string) => request<AskResponse>("POST", "/api/ai/ask", { question }),
+  ask: (question: string, history: Array<{ question: string; answer: string }> = []) => request<AskResponse>("POST", "/api/ai/ask", { question, history }),
   getDocument: (id: string) => request<DocumentDetail>("GET", `/api/documents/${id}`),
   saveDocument: (id: string, draft: Draft, file: boolean) => request<{ ok: true }>("PUT", `/api/documents/${id}/draft`, { draft, file }),
   revise: (id: string, draft: Draft, feedback: string) => request<Proposal>("POST", `/api/documents/${id}/revise`, { draft, feedback }),

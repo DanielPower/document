@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { api, thumbUrl } from "../api";
-import { DraftEditor } from "../components/DraftEditor";
+import { DraftEditor, rankMatches } from "../components/DraftEditor";
 import { Preview, STATUS_LABEL } from "../components/Preview";
 import { cx } from "../cx";
 import { useAppData } from "../data";
@@ -236,6 +236,72 @@ export function InboxPage() {
     return () => window.removeEventListener("keydown", h);
   }, []);
 
+  /** Documents ticked in the list, to file in one go. */
+  const [picked, setPicked] = useState<Set<string>>(new Set());
+  const [batch, setBatch] = useState<{ done: number; total: number } | null>(null);
+  const readyIds = items.filter((i) => i.status === "inbox" && i.proposed).map((i) => i.id);
+
+  /**
+   * Files the ticked documents one after another, each with its proposal (or
+   * the edits made to it). One at a time, and documents that only link to or
+   * update existing objects go first: a registration that adds a car's plate
+   * then lets a bill that mentions only the plate find the car, instead of
+   * creating it again. A document that would still create an object looking
+   * like one you have is left in the inbox for a person to decide.
+   */
+  const fileSelected = async () => {
+    const ids = readyIds.filter((id) => picked.has(id));
+    const filed: string[] = [];
+    const failed: string[] = [];
+    const skipped: string[] = [];
+    setBatch({ done: 0, total: ids.length });
+    const drafts = await Promise.all(ids.map(async (id) => {
+      const d = await api.getDocument(id).catch(() => null);
+      return { id, draft: d ? edits.current.get(id) ?? d.proposal?.draft ?? d.current : null };
+    }));
+    drafts.sort((a, b) => (a.draft?.newObjects.length ?? 0) - (b.draft?.newObjects.length ?? 0));
+    const titleOf = (id: string) => items.find((i) => i.id === id)?.proposed?.title ?? "A document";
+    for (const { id, draft: first } of drafts) {
+      try {
+        if (!first) throw new Error("couldn't load it");
+        let draft = first;
+        if (draft.newObjects.length) {
+          // Objects filed earlier in this batch may be the ones it proposes: check again.
+          const fresh = edits.current.has(id) ? draft : (await api.getDocument(id)).proposal?.draft ?? draft;
+          const existing = await api.objects();
+          draft = fresh;
+          const lookalike = draft.newObjects.map((o) => rankMatches(o, existing).likely[0]).find(Boolean);
+          if (lookalike) {
+            skipped.push(`${titleOf(id)} (looks like “${lookalike.title}”)`);
+            continue;
+          }
+        }
+        await api.saveDocument(id, draft, true);
+        forget(id);
+        filed.push(id);
+      } catch (e) {
+        failed.push(`${titleOf(id)}: ${(e as Error).message}`);
+      } finally {
+        setBatch({ done: filed.length + failed.length + skipped.length, total: ids.length });
+      }
+    }
+    setBatch(null);
+    setPicked(new Set());
+    await Promise.all([loadList(), refresh()]);
+    if (filed.includes(selectedId ?? "")) navigate("/");
+    failed.forEach((f) => toast(f, "error"));
+    if (skipped.length) toast(`Left in the inbox to check: ${skipped.join("; ")}`);
+    if (filed.length) {
+      toast(`Filed ${filed.length} document${filed.length > 1 ? "s" : ""}`, "info", {
+        label: "Undo",
+        run: async () => {
+          for (const id of filed) await api.unfileDocument(id);
+          await Promise.all([loadList(), refresh()]);
+        },
+      });
+    }
+  };
+
   const color = (key: string) => catalog.find((c) => c.key === key)?.color;
   // Components proposed but not created yet aren't in the catalog: "insurance_policy" -> "Insurance policy".
   const name = (key: string) => catalog.find((c) => c.key === key)?.name ?? key.charAt(0).toUpperCase() + key.slice(1).replace(/_/g, " ");
@@ -243,11 +309,39 @@ export function InboxPage() {
   return (
     <div className={cx(styles.page, routeId && styles.pageOpen)}>
       <aside className={styles.list}>
+        {(picked.size > 0 || batch) && (
+          <div className={styles.batchBar}>
+            {batch ? (
+              <span className={ui.small}>Filing {batch.done} of {batch.total}…</span>
+            ) : (
+              <>
+                <button className={cx(ui.primary, ui.compact)} onClick={fileSelected}>File {picked.size} as proposed</button>
+                <button className={cx(ui.link, ui.small)} onClick={() => setPicked(new Set())}>Clear</button>
+              </>
+            )}
+          </div>
+        )}
+        {readyIds.length > 1 && picked.size === 0 && !batch && (
+          <div className={styles.batchHint}>
+            <button className={cx(ui.link, ui.small)} onClick={() => setPicked(new Set(readyIds))}>Select all {readyIds.length} ready</button>
+          </div>
+        )}
         {items.length === 0 && <p className={cx(ui.muted, ui.pad)}>Inbox is empty. Drop files anywhere to add documents.</p>}
         {items.map((i) => {
           const p = i.proposed;
           return (
-            <button key={i.id} className={cx(styles.item, i.id === selectedId && styles.itemActive)} onClick={() => navigate(`/inbox/${i.id}`)}>
+            <div key={i.id} className={styles.itemRow}>
+            {i.status === "inbox" && i.proposed && (
+              <input
+                type="checkbox"
+                className={styles.pick}
+                aria-label={`Select ${p?.title || i.title}`}
+                checked={picked.has(i.id)}
+                disabled={batch !== null}
+                onChange={(e) => setPicked((s) => { const n = new Set(s); if (e.target.checked) n.add(i.id); else n.delete(i.id); return n; })}
+              />
+            )}
+            <button className={cx(styles.item, i.id === selectedId && styles.itemActive)} onClick={() => navigate(`/inbox/${i.id}`)}>
               {i.hasThumb ? <img className={styles.thumb} src={thumbUrl(i.id)} alt="" /> : <div className={ui.thumbPlaceholder}>{fileKind(i.mimeType)}</div>}
               <div className={styles.itemBody}>
                 <div className={styles.title}>{p?.title || i.title}</div>
@@ -268,6 +362,7 @@ export function InboxPage() {
                 </div>
               </div>
             </button>
+            </div>
           );
         })}
       </aside>
