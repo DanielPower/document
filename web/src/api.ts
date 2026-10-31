@@ -25,6 +25,13 @@ async function request<T>(method: string, url: string, body?: unknown): Promise<
   return data as T;
 }
 
+export interface DuplicateGroup {
+  reason: string;
+  /** true: same identifier value; false: similar names, check before merging */
+  certain: boolean;
+  objects: Array<{ id: string; title: string; documentCount: number }>;
+}
+
 export interface Status {
   ai: boolean;
   model: string;
@@ -70,6 +77,8 @@ export const api = {
   getDocument: (id: string) => request<DocumentDetail>("GET", `/api/documents/${id}`),
   saveDocument: (id: string, draft: Draft, file: boolean) => request<{ ok: true }>("PUT", `/api/documents/${id}/draft`, { draft, file }),
   revise: (id: string, draft: Draft, feedback: string) => request<Proposal>("POST", `/api/documents/${id}/revise`, { draft, feedback }),
+  reconcile: (draft: Draft, sameAs: Record<string, string> = {}) =>
+    request<{ draft: Draft; notes: string[] }>("POST", "/api/drafts/reconcile", { draft, sameAs }),
   reanalyze: (id: string, ocr = false) => request<{ ok: true }>("POST", `/api/documents/${id}/reanalyze`, { ocr }),
   deleteDocument: (id: string) => request<{ ok: true }>("DELETE", `/api/documents/${id}`),
   upload: (files: File[]) => {
@@ -89,6 +98,8 @@ export const api = {
   getObject: (id: string) => request<ObjectDetail>("GET", `/api/objects/${id}`),
   createObject: (draft: Draft, notes: string) => request<{ id: string }>("POST", "/api/objects", { draft, notes }),
   saveObject: (id: string, draft: Draft, notes: string) => request<{ ok: true }>("PUT", `/api/objects/${id}`, { draft, notes }),
+  duplicateObjects: () => request<DuplicateGroup[]>("GET", "/api/objects/duplicates"),
+  mergeObject: (id: string, into: string) => request<{ kept: string[]; discarded: string[] }>("POST", `/api/objects/${id}/merge`, { into }),
   deleteObject: (id: string) => request<{ ok: true }>("DELETE", `/api/objects/${id}`),
 };
 

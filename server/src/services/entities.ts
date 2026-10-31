@@ -2,6 +2,7 @@ import type { Tx } from "../db.ts";
 import { HttpError } from "../errors.ts";
 import type { ComponentDef, Draft, DraftComponent, DraftValue } from "../shared/types.ts";
 import { componentsByKey, createComponent } from "./components.ts";
+import { reconcileDraft } from "./objects.ts";
 import { formatValue, fromStored, normalizeDraftValue, toStored, type StoredValue } from "./values.ts";
 
 interface ValueRow extends StoredValue {
@@ -73,9 +74,12 @@ export interface ApplyResult {
  * Applies a draft to an entity in the given transaction: creates proposed
  * component definitions and objects, then replaces the entity's components.
  */
-export async function applyDraft(tx: Tx, entityId: string, draft: Draft): Promise<ApplyResult> {
+export async function applyDraft(tx: Tx, entityId: string, input: Draft): Promise<ApplyResult> {
   const [entity] = await tx<{ kind: string }[]>`select kind from entity where id = ${entityId} for update`;
   if (!entity) throw new HttpError(404, "Not found.");
+  // Last guard against duplicates: an object proposed as new may have been
+  // filed from another document since this draft was made.
+  const { draft } = await reconcileDraft(tx, input);
 
   // 1. New component definitions. If the key already exists (e.g. another
   //    inbox item created it first) the existing definition is reused.
@@ -96,6 +100,11 @@ export async function applyDraft(tx: Tx, entityId: string, draft: Draft): Promis
     if (!o.title?.trim()) errors.push(`New object "${o.tempId}" needs a title.`);
     validateComponents(o.components, catalog, draft, errors, `new object "${o.title || o.tempId}"`);
   }
+  const updateTitles = await refTitles(tx, (draft.objectUpdates ?? []).map((u) => u.objectId));
+  for (const u of draft.objectUpdates ?? []) {
+    if (!updateTitles.has(u.objectId)) errors.push("An object this document updates no longer exists.");
+    else validateComponents(u.components, catalog, draft, errors, `"${updateTitles.get(u.objectId)}"`, true);
+  }
   if (errors.length) throw new HttpError(400, errors.join("\n"));
 
   // 3. New objects (created first so refs between them resolve).
@@ -106,6 +115,9 @@ export async function applyDraft(tx: Tx, entityId: string, draft: Draft): Promis
   }
   for (const o of draft.newObjects ?? []) {
     await writeComponents(tx, refMap.get(`new:${o.tempId}`)!, o.components, catalog, refMap);
+  }
+  for (const u of draft.objectUpdates ?? []) {
+    await updateComponents(tx, u.objectId, u.components, catalog, refMap);
   }
 
   // 4. The entity itself.
@@ -125,7 +137,7 @@ export async function applyDraft(tx: Tx, entityId: string, draft: Draft): Promis
   return { createdComponents, createdObjects: Object.fromEntries(refMap) };
 }
 
-function validateComponents(comps: DraftComponent[], catalog: Map<string, ComponentDef>, draft: Draft, errors: string[], where: string) {
+function validateComponents(comps: DraftComponent[], catalog: Map<string, ComponentDef>, draft: Draft, errors: string[], where: string, partial = false) {
   const newIds = new Set((draft.newObjects ?? []).map((o) => `new:${o.tempId}`));
   for (const c of comps ?? []) {
     const def = catalog.get(c.component);
@@ -141,7 +153,7 @@ function validateComponents(comps: DraftComponent[], catalog: Map<string, Compon
       const v = normalizeDraftValue(f, raw);
       if (v === undefined) {
         errors.push(`${def.name} → ${f.label}: "${String(raw)}" is not a valid ${f.type} (${where}).`);
-      } else if (v === null && f.required) {
+      } else if (v === null && f.required && !partial) {
         errors.push(`${def.name} → ${f.label} is required (${where}).`);
       } else if (typeof v === "string" && f.type === "ref" && v.startsWith("new:") && !newIds.has(v)) {
         errors.push(`${def.name} → ${f.label} points at a new object that isn't in the draft (${where}).`);
@@ -170,6 +182,38 @@ async function writeComponents(tx: Tx, entityId: string, comps: DraftComponent[]
         values (${inst.id}, ${f.id}, ${s.value_text}, ${s.value_number}, ${s.value_date}::date, ${s.value_bool}, ${s.value_ref}::uuid)`;
     }
   }
+}
+
+/**
+ * Sets the given values on an existing entity without touching anything else:
+ * fills the first instance of each component, adding the component if missing.
+ */
+async function updateComponents(tx: Tx, entityId: string, comps: DraftComponent[], catalog: Map<string, ComponentDef>, refMap: Map<string, string>) {
+  for (const c of comps) {
+    const def = catalog.get(c.component)!;
+    let [inst] = await tx<{ id: string }[]>`
+      select id from component_instance where entity_id = ${entityId} and component_id = ${def.id} order by position limit 1`;
+    if (!inst) {
+      [inst] = await tx<{ id: string }[]>`
+        insert into component_instance (entity_id, component_id, position)
+        values (${entityId}, ${def.id}, (select coalesce(max(position) + 1, 0) from component_instance where entity_id = ${entityId}))
+        returning id`;
+    }
+    for (const f of def.fields) {
+      let v: DraftValue | undefined = normalizeDraftValue(f, c.values?.[f.key]);
+      if (v === undefined || v === null) continue;
+      if (f.type === "ref") {
+        v = refMap.get(v as string) ?? (v as string);
+        await checkRefTarget(tx, v, f.options.component, def.name, f.label, entityId);
+      }
+      const s = toStored(f, v)!;
+      await tx`delete from field_value where instance_id = ${inst.id} and field_id = ${f.id}`;
+      await tx`
+        insert into field_value (instance_id, field_id, value_text, value_number, value_date, value_bool, value_ref)
+        values (${inst.id}, ${f.id}, ${s.value_text}, ${s.value_number}, ${s.value_date}::date, ${s.value_bool}, ${s.value_ref}::uuid)`;
+    }
+  }
+  await tx`update entity set updated_at = now() where id = ${entityId}`;
 }
 
 async function checkRefTarget(tx: Tx, targetId: string, requiredComponent: string | undefined, compName: string, fieldLabel: string, selfId: string) {

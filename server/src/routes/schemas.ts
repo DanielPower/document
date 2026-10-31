@@ -13,6 +13,7 @@ export const FieldInputSchema = z.object({
       choices: z.array(z.string()).optional(),
       currency: z.string().optional(),
       component: z.string().optional(),
+      identifier: z.boolean().optional(),
     })
     .default({}),
 });
@@ -41,4 +42,5 @@ export const DraftSchema = z.object({
   newObjects: z
     .array(z.object({ tempId: z.string(), title: z.string(), components: z.array(DraftComponentSchema) }))
     .default([]),
+  objectUpdates: z.array(z.object({ objectId: z.string().uuid(), components: z.array(DraftComponentSchema) })).default([]),
 });

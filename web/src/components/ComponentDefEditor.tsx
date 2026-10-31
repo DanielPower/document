@@ -120,6 +120,11 @@ export function ComponentDefEditor(props: {
               ))}
             </select>
           )}
+          {(f.type === "text" || f.type === "number") && (
+            <label className={ui.inline} title="Identifier: the value pins down exactly one thing (VIN, plate, account number). Objects with the same value are treated as the same object.">
+              <input type="checkbox" checked={!!f.options.identifier} onChange={(e) => setField(i, { options: { ...f.options, identifier: e.target.checked || undefined } })} /> ID
+            </label>
+          )}
           <label className={ui.inline} title="Required">
             <input type="checkbox" checked={f.required} onChange={(e) => setField(i, { required: e.target.checked })} /> req
           </label>

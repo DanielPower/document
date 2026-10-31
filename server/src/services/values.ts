@@ -146,3 +146,8 @@ export function formatValue(field: Pick<FieldDef, "type" | "options">, value: Dr
   if (field.type === "ref") return refTitles?.get(String(value)) ?? String(value);
   return String(value);
 }
+
+/** Compares identifiers loosely: "JRO 686", "jro-686" and "JRO686" are the same plate. */
+export function normalizeIdentifier(v: DraftValue): string {
+  return v === null || typeof v === "boolean" ? "" : String(v).toUpperCase().replace(/[^A-Z0-9]/g, "");
+}

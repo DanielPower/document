@@ -21,6 +21,8 @@ A car repair bill is `Invoice` + `Related asset → 2019 Civic` + `Vehicle servi
 
    To change the proposal without editing it by hand, describe the change ("use an amount and a billing frequency instead of an annual amount") and choose **Revise**. The AI gets the proposal as you've edited it, plus your earlier requests for this document, and changes only what you asked about. When you edit a proposed component's fields by hand, values already filled in follow renamed fields and are converted when a field's type changes.
 
+   **Duplicate objects.** Fields can be marked as identifiers (VIN, licence plate, account or policy number; the "ID" checkbox in the component editor). A proposed new object that shares a component and an identifier value with an existing object is that object: the document links to the existing one, and details it doesn't have yet (say, a plate) are shown as "Changes to existing objects" for you to review. Conflicting values are left alone and mentioned. This check runs when the AI proposes, every time you open an inbox document (so documents analysed in the same batch see objects filed since), and again when you file. For matches it can't prove, choose "Already have it?" on a proposed object. To clean up duplicates that already exist, use "Possible duplicates" on the Objects page, or "Merge" on an object's page. Merging moves every link to the kept object and copies over details it lacks; where both have a value, the kept object's wins.
+
 Because filed documents are used as examples, the AI picks up your conventions as you correct it.
 
 ## Running it

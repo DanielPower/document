@@ -61,6 +61,8 @@ function cleanOptions(f: ComponentInput["fields"][number]) {
   if (f.type === "select") return { choices: (o.choices ?? []).map((c) => c.trim()).filter(Boolean) };
   if (f.type === "money") return o.currency ? { currency: o.currency.toUpperCase() } : {};
   if (f.type === "ref") return o.component ? { component: o.component } : {};
+  // Identifiers are text or numbers (VIN, plate, account number).
+  if ((f.type === "text" || f.type === "number") && o.identifier) return { identifier: true };
   return {};
 }
 

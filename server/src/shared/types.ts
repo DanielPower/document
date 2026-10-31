@@ -10,6 +10,12 @@ export interface FieldOptions {
   currency?: string;
   /** ref: if set, the target object must carry this component key */
   component?: string;
+  /**
+   * text/number: the value identifies one thing (VIN, licence plate, account or
+   * policy number). Objects with the same component and identifier value are
+   * the same object, which is how duplicates are caught.
+   */
+  identifier?: boolean;
 }
 
 export interface FieldDef {
@@ -79,6 +85,16 @@ export interface Draft {
   newComponents: ComponentInput[];
   /** Objects (cars, houses, ...) to create when the draft is applied. */
   newObjects: DraftNewObject[];
+  /**
+   * Values to set on existing objects when the draft is applied, e.g. a
+   * licence plate learned from this document. Only the listed fields change.
+   */
+  objectUpdates?: DraftObjectUpdate[];
+}
+
+export interface DraftObjectUpdate {
+  objectId: string;
+  components: DraftComponent[];
 }
 
 export interface Proposal {
@@ -90,6 +106,8 @@ export interface Proposal {
   warnings: string[];
   /** Change requests the owner made, oldest first; each revision saw all of them. */
   feedback?: string[];
+  /** Proposed new objects that turned out to be existing ones, and why. */
+  matched?: string[];
 }
 
 export type DocumentStatus = "queued" | "ocr" | "analyzing" | "inbox" | "filed" | "failed";

@@ -9,6 +9,7 @@ import { aiAvailable, analyzeDocument, generateComponent } from "../services/ai.
 import { createComponent, deleteComponent, listComponents, updateComponent } from "../services/components.ts";
 import { applyDraft, describeComponents, loadComponents, loadDraft, refTitles } from "../services/entities.ts";
 import { deleteDocument, ingestBuffer } from "../services/ingest.ts";
+import { findDuplicates, mergeObjects, reconcileDraft } from "../services/objects.ts";
 import { aggregateDocuments, searchDocuments, type SearchParams } from "../services/search.ts";
 import { askQuestion, interpretQuestion } from "../services/ai-query.ts";
 import { refreshTitleChunk, semanticStatus } from "../services/embeddings.ts";
@@ -84,6 +85,13 @@ export async function apiRoutes(app: FastifyInstance) {
       from document d join entity e on e.id = d.entity_id where e.id = ${id}`;
     if (!d) throw new HttpError(404, "Document not found.");
     const current = await loadDraft(sql, id);
+    // Re-check inbox proposals against objects filed since they were made
+    // (documents analysed in the same batch can't see each other's new objects).
+    let proposal = d.proposal as Proposal | null;
+    if (proposal && d.status === "inbox") {
+      const { draft, notes } = await reconcileDraft(sql, proposal.draft);
+      proposal = { ...proposal, draft, matched: [...new Set([...(proposal.matched ?? []), ...notes])] };
+    }
     return {
       id: d.id,
       title: d.title,
@@ -100,7 +108,7 @@ export async function apiRoutes(app: FastifyInstance) {
       fileSize: Number(d.file_size),
       components: current.components.map((c) => c.component),
       current,
-      proposal: d.proposal as Proposal | null,
+      proposal,
     };
   });
 
@@ -289,6 +297,39 @@ export async function apiRoutes(app: FastifyInstance) {
       if (body.notes !== undefined) await tx`update entity set notes = ${body.notes} where id = ${id}`;
     });
     return { ok: true };
+  });
+
+  /**
+   * Re-checks a draft for proposed new objects that already exist. `sameAs`
+   * maps a proposed object's tempId to an existing object the owner picked.
+   */
+  app.post("/api/drafts/reconcile", async (req) => {
+    const body = z.object({ draft: DraftSchema, sameAs: z.record(z.string(), z.string().uuid()).default({}) }).parse(req.body);
+    return reconcileDraft(sql, body.draft, body.sameAs);
+  });
+
+  /** Objects that look like duplicates of each other. */
+  app.get("/api/objects/duplicates", async () => {
+    const groups = await findDuplicates(sql);
+    if (!groups.length) return [];
+    const ids = groups.flatMap((g) => g.ids);
+    const rows = await sql<{ id: string; title: string; document_count: number }[]>`
+      select e.id, e.title,
+        (select count(distinct ci.entity_id)::int from field_value fv join component_instance ci on ci.id = fv.instance_id where fv.value_ref = e.id) as document_count
+      from entity e where e.id = any(${ids}::uuid[])`;
+    const byId = new Map(rows.map((r) => [r.id, r]));
+    return groups.map((g) => ({
+      reason: g.reason,
+      certain: g.certain,
+      objects: g.ids.map((id) => ({ id, title: byId.get(id)!.title, documentCount: byId.get(id)!.document_count })),
+    }));
+  });
+
+  /** Merges this object into another: links move, missing details are filled in, this one is deleted. */
+  app.post("/api/objects/:id/merge", async (req) => {
+    const { id } = IdParams.parse(req.params);
+    const { into } = z.object({ into: z.string().uuid() }).parse(req.body);
+    return sql.begin((tx) => mergeObjects(tx, id, into));
   });
 
   app.delete("/api/objects/:id", async (req) => {

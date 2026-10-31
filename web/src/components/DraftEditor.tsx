@@ -16,6 +16,13 @@ function defsFor(catalog: ComponentDef[], draft: Draft): Map<string, Def> {
   return m;
 }
 
+/** Existing objects ordered by how many words their titles share with `title`. */
+function likelyMatches(title: string, objects: ObjectSummary[]): ObjectSummary[] {
+  const words = new Set(title.toLowerCase().match(/[a-z0-9]+/g) ?? []);
+  const score = (o: ObjectSummary) => (o.title.toLowerCase().match(/[a-z0-9]+/g) ?? []).filter((w) => words.has(w)).length;
+  return [...objects].sort((a, b) => score(b) - score(a) || a.title.localeCompare(b.title));
+}
+
 let tempCounter = 0;
 const newTempId = () => `obj${Date.now().toString(36)}${tempCounter++}`;
 
@@ -31,6 +38,8 @@ export function DraftEditor(props: {
   showDate?: boolean;
   /** id of the entity being edited, excluded from ref pickers */
   selfId?: string;
+  /** The owner says a proposed new object is an existing one. */
+  onSameAs?: (tempId: string, objectId: string) => void;
 }) {
   const { draft, onChange, catalog } = props;
   const defs = useMemo(() => defsFor(catalog, draft), [catalog, draft]);
@@ -143,6 +152,17 @@ export function DraftEditor(props: {
                   onChange={(e) => set({ newObjects: draft.newObjects.map((x, j) => (j === i ? { ...x, title: e.target.value } : x)) })}
                 />
               </label>
+              {props.onSameAs && (
+                <label>
+                  Already have it?
+                  <select value="" onChange={(e) => e.target.value && props.onSameAs!(o.tempId, e.target.value)}>
+                    <option value="">No, create “{o.title}”</option>
+                    {likelyMatches(o.title, props.objects).map((x) => (
+                      <option key={x.id} value={x.id}>Same as “{x.title}”</option>
+                    ))}
+                  </select>
+                </label>
+              )}
               <ComponentList
                 ctx={ctx}
                 draft={draft}
@@ -154,6 +174,31 @@ export function DraftEditor(props: {
               <button className={cx(ui.compact, ui.danger)} onClick={() => discardNewObject(o.tempId)}>Discard “{o.title}”</button>
             </div>
           ))}
+        </section>
+      )}
+      {(draft.objectUpdates?.length ?? 0) > 0 && (
+        <section className={styles.proposed}>
+          <h4>Changes to existing objects</h4>
+          <p className={cx(ui.muted, ui.small)}>Details from this document that will be saved on objects you already have. Blank fields are left as they are.</p>
+          {draft.objectUpdates!.map((u, i) => {
+            const title = props.objects.find((o) => o.id === u.objectId)?.title ?? "An existing object";
+            return (
+              <div className={styles.proposedItem} key={u.objectId}>
+                <strong>{title}</strong>
+                <ComponentList
+                  ctx={ctx}
+                  draft={draft}
+                  components={u.components}
+                  onChange={(components) => set({ objectUpdates: draft.objectUpdates!.map((x, j) => (j === i ? { ...x, components } : x)) })}
+                  withDraft={(cs, d) => ({ ...d, objectUpdates: (d.objectUpdates ?? []).map((x) => (x.objectId === u.objectId ? { ...x, components: cs } : x)) })}
+                  pickFrom={[...defs.values()]}
+                />
+                <button className={cx(ui.compact, ui.danger)} onClick={() => set({ objectUpdates: draft.objectUpdates!.filter((_, j) => j !== i) })}>
+                  Don't change “{title}”
+                </button>
+              </div>
+            );
+          })}
         </section>
       )}
       {draft.newObjects.length === 0 && (

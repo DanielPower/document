@@ -88,6 +88,18 @@ export function InboxPage() {
     }
   };
 
+  /** The owner picked an existing object for a proposed new one; the server merges the details. */
+  const sameAs = async (tempId: string, objectId: string) => {
+    if (!draft) return;
+    try {
+      const r = await api.reconcile(draft, { [tempId]: objectId });
+      setDraft(r.draft);
+      r.notes.forEach((n) => toast(n));
+    } catch (e) {
+      toast((e as Error).message, "error");
+    }
+  };
+
   const next = () => {
     const idx = items.findIndex((i) => i.id === selectedId);
     const after = items.slice(idx + 1).concat(items.slice(0, idx)).find((i) => i.status === "inbox" && i.id !== selectedId);
@@ -148,6 +160,11 @@ export function InboxPage() {
                       <>
                         <div className={ui.aiNoteHead}>AI proposal <span className={cx(ui.muted, ui.small)}>({doc.proposal.model})</span></div>
                         <p>{doc.proposal.reasoning}</p>
+                        {!!doc.proposal.matched?.length && (
+                          <ul className={cx(ui.small, styles.feedbackList)}>
+                            {doc.proposal.matched.map((m, i) => <li key={i}>{m}</li>)}
+                          </ul>
+                        )}
                         {doc.proposal.warnings.length > 0 && (
                           <details>
                             <summary className={ui.small}>{doc.proposal.warnings.length} item(s) dropped while checking the proposal</summary>
@@ -180,7 +197,7 @@ export function InboxPage() {
                   </div>
                 )}
                 <fieldset className={styles.editorFieldset} disabled={revising}>
-                  <DraftEditor draft={draft} onChange={setDraft} catalog={catalog} objects={objects} showDate selfId={doc.id} />
+                  <DraftEditor draft={draft} onChange={setDraft} catalog={catalog} objects={objects} showDate selfId={doc.id} onSameAs={sameAs} />
                 </fieldset>
                 <div className={ui.actions}>
                   <button className={ui.primary} disabled={busy || revising || doc.status !== "inbox"} onClick={file}>

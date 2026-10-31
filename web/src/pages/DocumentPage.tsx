@@ -27,6 +27,16 @@ export function DocumentPage() {
 
   if (!doc || !draft) return <div className={cx(ui.page, ui.muted)}>Loading…</div>;
 
+  const sameAs = async (tempId: string, objectId: string) => {
+    try {
+      const r = await api.reconcile(draft, { [tempId]: objectId });
+      setDraft(r.draft);
+      r.notes.forEach((n) => toast(n));
+    } catch (e) {
+      toast((e as Error).message, "error");
+    }
+  };
+
   const act = async (fn: () => Promise<unknown>, done: string) => {
     setBusy(true);
     try {
@@ -58,7 +68,7 @@ export function DocumentPage() {
           {doc.originalFilename} · {STATUS_LABEL[doc.status]} · added {new Date(doc.addedAt).toLocaleDateString()}
           {doc.status === "inbox" && <> · <Link to={`/inbox/${doc.id}`}>review in inbox</Link></>}
         </div>
-        <DraftEditor draft={draft} onChange={setDraft} catalog={catalog} objects={objects} showDate selfId={doc.id} />
+        <DraftEditor draft={draft} onChange={setDraft} catalog={catalog} objects={objects} showDate selfId={doc.id} onSameAs={sameAs} />
         <div className={ui.actions}>
           <button
             className={ui.primary}

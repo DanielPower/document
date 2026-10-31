@@ -15,6 +15,7 @@ import {
   type Proposal,
 } from "../shared/types.ts";
 import { listComponents, validateComponentInput } from "./components.ts";
+import { reconcileDraft } from "./objects.ts";
 import { describeComponents, loadComponents, refTitles } from "./entities.ts";
 import { isUuid, normalizeDraftValue, parseDate } from "./values.ts";
 
@@ -50,6 +51,7 @@ const NewFieldSchema = z.object({
   choices: z.array(z.string()).describe("Only for type select; otherwise empty"),
   currency: z.string().nullable().describe("Only for type money, e.g. CAD; otherwise null"),
   ref_component: z.string().nullable().describe("Only for type ref: component key the target object must have, or null"),
+  identifier: z.boolean().describe("True for text/number fields whose value identifies exactly one thing (VIN, licence plate, account or policy number, serial number); false otherwise"),
 });
 
 const NewComponentSchema = z.object({
@@ -72,6 +74,14 @@ export const AnalysisSchema = z.object({
       components: z.array(ComponentSchema),
     }),
   ),
+  existing_object_updates: z
+    .array(
+      z.object({
+        object_id: z.string().describe("Id of an existing object"),
+        components: z.array(ComponentSchema).describe("Only fields to add or correct on that object"),
+      }),
+    )
+    .describe("Details this document reveals about objects that already exist, e.g. a licence plate the vehicle object doesn't have yet"),
   reasoning: z.string().describe("Two to five sentences for the human reviewer: what this is and why these components"),
 });
 export type Analysis = z.infer<typeof AnalysisSchema>;
@@ -90,7 +100,10 @@ Your job, for one newly scanned document: propose its title, its date, and the c
 Guidelines:
 1. Prefer existing components. Attach every component whose purpose fits the document, and fill in as many of its fields as the document supports.
 2. Propose a new component only when the document has important, reusable information that no existing component can hold, and the same component would plausibly be useful on future documents. Design it to be general (e.g. "insurance_policy", not "intact_home_policy_2024"), with a few well-chosen fields. Do not create a component that duplicates an existing one under another name. Do not propose new components for trivia.
-3. Link documents to objects. If the document concerns a specific vehicle, property, person, account or similar, attach a component with a ref field pointing at the matching object. Match existing objects by strong identifiers (VIN, plate, address, account or policy number, name). If the document clearly concerns such a thing and no existing object matches, propose it in new_objects (with components describing it) and reference it as new:<temp_id>. Don't create objects for vendors or one-off counterparties unless they are something the owner would want to track.
+3. Link documents to objects. If the document concerns a specific vehicle, property, person, account or similar, attach a component with a ref field pointing at the matching object.
+   - Reuse existing objects. Before proposing a new object, check the object list carefully: the same thing is often named differently ("2022 Mazda3" and "2022 Mazda MAZDA3 Sport GT" are the same car if nothing contradicts it). Fields marked identifier (VIN, plate, account or policy number) decide it: the same identifier value means the same object. Matching make, model and year with no conflicting identifier usually means the same object too; an owner rarely has two of the same.
+   - When the document reveals details an existing object lacks (a licence plate, a policy number, an address), add them with existing_object_updates instead of creating a new object. Only include fields that are new or wrong.
+   - Propose new_objects only for things clearly not in the list, with components describing them, and reference them as new:<temp_id>. Don't create objects for vendors or one-off counterparties unless they are something the owner would want to track.
 4. Title: short and specific, in the form a person would want to see in a list, e.g. "Canadian Tire - brake service" or "Hydro bill - March 2025". Don't put the date in the title.
 
 Value formats (all values are written as text):
@@ -112,6 +125,7 @@ function describeField(f: FieldDef | ComponentInput["fields"][number]) {
     ...(f.options?.choices?.length ? { choices: f.options.choices } : {}),
     ...(f.options?.currency ? { currency: f.options.currency } : {}),
     ...(f.options?.component ? { must_point_at_object_with_component: f.options.component } : {}),
+    ...(f.options?.identifier ? { identifier: true } : {}),
   };
 }
 
@@ -234,7 +248,11 @@ export async function analyzeDocument(docId: string, revision?: Revision): Promi
   const parsed = response.parsed_output;
   if (!parsed) throw new Error("The model's answer did not match the expected format.");
 
-  const { draft, warnings } = toDraft(parsed, catalog, new Set(objects.map((o) => o.id)));
+  const converted = toDraft(parsed, catalog, new Set(objects.map((o) => o.id)));
+  const warnings = converted.warnings;
+  // The model sometimes proposes an object that already exists (and documents
+  // analysed in the same batch can't see each other's new objects); identifiers decide.
+  const { draft, notes: matched } = await reconcileDraft(sql, converted.draft);
   if (revision) {
     // The model doesn't see or return colours; keep the ones proposed components already had.
     const colors = new Map(revision.draft.newComponents.map((c) => [c.key, c.color]));
@@ -247,6 +265,7 @@ export async function analyzeDocument(docId: string, revision?: Revision): Promi
     createdAt: new Date().toISOString(),
     warnings,
     ...(revision ? { feedback: [...revision.previousFeedback, revision.feedback] } : {}),
+    ...(matched.length ? { matched } : {}),
   };
 }
 
@@ -293,9 +312,11 @@ export function draftToAnalysis(d: Draft): Omit<Analysis, "reasoning"> {
         choices: f.options.choices ?? [],
         currency: f.options.currency ?? null,
         ref_component: f.options.component ?? null,
+        identifier: !!f.options.identifier,
       })),
     })),
     new_objects: d.newObjects.map((o) => ({ temp_id: o.tempId, title: o.title, components: components(o.components) })),
+    existing_object_updates: (d.objectUpdates ?? []).map((u) => ({ object_id: u.objectId, components: components(u.components) })),
   };
 }
 
@@ -356,12 +377,21 @@ export function toDraft(a: Analysis, catalog: Map<string, ComponentDef>, objectI
     title: o.title,
     components: convert(o.components, `new object "${o.title}"`),
   }));
+  const objectUpdates = a.existing_object_updates.flatMap((u) => {
+    if (!objectIds.has(u.object_id)) {
+      warnings.push("Dropped an update to an unknown object.");
+      return [];
+    }
+    const components = convert(u.components, "an existing object").filter((c) => Object.keys(c.values).length);
+    return components.length ? [{ objectId: u.object_id, components }] : [];
+  });
   const draft: Draft = {
     title: a.title.trim(),
     documentDate: a.document_date ? parseDate(a.document_date) : null,
     components: convert(a.components, "the document"),
     newComponents,
     newObjects,
+    objectUpdates,
   };
   return { draft, warnings };
 }
@@ -382,6 +412,7 @@ function newComponentInput(nc: z.infer<typeof NewComponentSchema>): ComponentInp
         f.type === "select" ? { choices: f.choices } :
         f.type === "money" && f.currency ? { currency: f.currency } :
         f.type === "ref" && f.ref_component ? { component: f.ref_component } : {},
+      ...((f.type === "text" || f.type === "number") && f.identifier ? { options: { identifier: true } } : {}),
     })),
   };
 }

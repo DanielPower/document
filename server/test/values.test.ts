@@ -30,3 +30,12 @@ test("normalizeDraftValue respects field types", () => {
   assert.equal(normalizeDraftValue({ type: "ref", options: {} }, "the car"), undefined);
   assert.equal(normalizeDraftValue({ type: "money", options: {} }, ""), null);
 });
+
+test("normalizeIdentifier ignores case, spaces and punctuation", async () => {
+  const { normalizeIdentifier } = await import("../src/services/values.ts");
+  assert.equal(normalizeIdentifier("JRO 686"), normalizeIdentifier("jro-686"));
+  assert.equal(normalizeIdentifier("jm1bpaml5n1518380"), "JM1BPAML5N1518380");
+  assert.equal(normalizeIdentifier(12345), "12345");
+  assert.equal(normalizeIdentifier(null), "");
+  assert.equal(normalizeIdentifier(true), "");
+});

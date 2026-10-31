@@ -19,6 +19,7 @@ export function ObjectPage() {
   const [notes, setNotes] = useState("");
   const [docs, setDocs] = useState<DocumentSummary[]>([]);
   const [busy, setBusy] = useState(false);
+  const [mergeInto, setMergeInto] = useState("");
 
   useEffect(() => {
     if (isNew) { setDraft(structuredClone(EMPTY)); setNotes(""); setDocs([]); return; }
@@ -75,6 +76,37 @@ export function ObjectPage() {
           </button>
         )}
       </div>
+      {!isNew && (
+        <div className={ui.row}>
+          <label className={ui.grow}>
+            Same thing as another object? Merge this one into it
+            <select value={mergeInto} onChange={(e) => setMergeInto(e.target.value)}>
+              <option value="">Choose the object to keep…</option>
+              {objects.filter((o) => o.id !== id).map((o) => <option key={o.id} value={o.id}>{o.title}</option>)}
+            </select>
+          </label>
+          <button
+            disabled={busy || !mergeInto}
+            onClick={async () => {
+              const target = objects.find((o) => o.id === mergeInto);
+              if (!confirm(`Merge "${draft.title}" into "${target?.title}"? Its ${docs.length} linked document(s) will point at "${target?.title}", details it lacks are copied over, and this object is deleted.`)) return;
+              setBusy(true);
+              try {
+                const r = await api.mergeObject(id!, mergeInto);
+                toast(`Merged into "${target?.title}".` + (r.discarded.length ? ` Kept its values over: ${r.discarded.join("; ")}.` : ""));
+                await refresh();
+                navigate(`/objects/${mergeInto}`);
+              } catch (e) {
+                toast((e as Error).message, "error");
+              } finally {
+                setBusy(false);
+              }
+            }}
+          >
+            Merge
+          </button>
+        </div>
+      )}
       {!isNew && (
         <>
           <h3>Linked documents ({docs.length})</h3>
