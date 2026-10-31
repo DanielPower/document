@@ -8,4 +8,11 @@
 .tabs a { margin-left: 10px; font-size: 12px; }
 @media (max-width: 1000px) {
   .page { flex: none; grid-template-columns: 1fr; grid-template-rows: none; }
+  /* The preview scrolls inside a fixed-height box so the details are reachable below it. */
+  .left { height: 65dvh; }
+  .right { border-left: none; border-top: 1px solid var(--border); }
+}
+@media (max-width: 700px) {
+  .left { height: 60dvh; }
+  .tabs { flex-wrap: wrap; }
 }

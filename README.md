@@ -25,6 +25,15 @@ A car repair bill is `Invoice` + `Related asset → 2019 Civic` + `Vehicle servi
 
 Because filed documents are used as examples, the AI picks up your conventions as you correct it.
 
+## On your phone
+
+Docket works in a phone's browser: the navigation moves to a bottom tab bar, the inbox and document pages stack, and search filters fold behind a **Filters** button. PDFs are drawn with PDF.js, since mobile browsers don't show a PDF inside a page.
+
+- **Scan** opens the rear camera. Take one photo per page, reorder or remove pages, and upload them as one PDF.
+- **Install** it from Chrome's menu (*Add to home screen* / *Install app*). This needs HTTPS, which a reverse proxy with a real certificate provides.
+- **Share to Docket**: once installed, Docket appears in Android's share sheet. Share a PDF or image from any app, including a document scanner app with edge detection (Google Drive's scanner, for example). Files arrive at `POST /share` and open in the inbox.
+- If the phone can't reach the server (e.g. off your home network without a VPN), the installed app shows a "can't reach Docket" page instead of a browser error. Nothing is cached for offline use.
+
 ## Running it
 
 You need Postgres 13+ (for `gen_random_uuid()`) and Docker. Every push to `main` publishes an image for amd64 and arm64 to `ghcr.io/danielpower/document` (tags `latest` and `sha-<commit>`), built by `.github/workflows/docker.yml` after typecheck and tests pass. Copy `docker-compose.yml` and `.env.example` to the server; you don't need the rest of the source.

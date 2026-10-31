@@ -1,3 +1,8 @@
 .toasts { position: fixed; bottom: 16px; right: 16px; display: flex; flex-direction: column; gap: 8px; z-index: 30; }
 .toast { background: var(--text); color: var(--bg); padding: 10px 14px; border-radius: var(--radius); max-width: 420px; white-space: pre-wrap; box-shadow: 0 4px 16px rgba(0,0,0,.2); }
 .toastError { background: var(--danger); color: white; }
+@media (max-width: 700px) {
+  /* Above the bottom tab bar. */
+  .toasts { left: 12px; right: 12px; bottom: calc(64px + env(safe-area-inset-bottom)); }
+  .toast { max-width: none; }
+}
