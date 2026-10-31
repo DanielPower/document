@@ -23,15 +23,23 @@ Because filed documents are used as examples, the AI picks up your conventions a
 
 ## Running it
 
-You need Postgres 13+ (for `gen_random_uuid()`) and Docker. The image uses Node 24.
+You need Postgres 13+ (for `gen_random_uuid()`) and Docker. Every push to `main` publishes an image for amd64 and arm64 to `ghcr.io/danielpower/document` (tags `latest` and `sha-<commit>`), built by `.github/workflows/docker.yml` after typecheck and tests pass. Copy `docker-compose.yml` and `.env.example` to the server; you don't need the rest of the source.
 
 ```bash
 cp .env.example .env    # set DATABASE_URL and ANTHROPIC_API_KEY
 ```
 
+If the package is private, log in to the registry once with a GitHub personal access token (classic) that has the `read:packages` scope:
+
 ```bash
-docker compose up -d --build
+docker login ghcr.io -u <github-username>
 ```
+
+```bash
+docker compose pull && docker compose up -d
+```
+
+To update, run the same command again. To pin a version, change `latest` in `docker-compose.yml` to a `sha-…` tag.
 
 Open http://localhost:8080. Tables are created on first start (migrations live in `server/src/migrations`).
 
@@ -46,7 +54,9 @@ create database docket owner docket;
 
 **Authentication**: there is none built in. Put Docket behind your reverse proxy's auth (Authelia, Authentik, oauth2-proxy, Tailscale…) and don't expose it directly.
 
-**OCR languages**: set `OCR_LANGUAGES=eng+fra` and build with `--build-arg TESSERACT_LANGS="fra"`.
+**File ownership**: the container starts as root only long enough to give `./data` and `./consume` to UID/GID 1000, then runs as that user. Set `PUID`/`PGID` in `.env` to use a different owner.
+
+**OCR languages**: the published image includes English only. For other languages, build the image yourself (`build: .` in `docker-compose.yml`) with `--build-arg TESSERACT_LANGS="fra"`, and set `OCR_LANGUAGES=eng+fra`.
 
 ### Configuration
 
@@ -62,6 +72,7 @@ create database docket owner docket;
 | `OCR_LANGUAGES` | `eng` | Tesseract languages |
 | `WORKER_CONCURRENCY` | `2` | Documents processed in parallel |
 | `DATA_DIR` / `CONSUME_DIR` | `/data` / `/consume` | Storage and drop folder |
+| `PUID` / `PGID` | `1000` | User and group the container runs as |
 
 ## Searching
 
