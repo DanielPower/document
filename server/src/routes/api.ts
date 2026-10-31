@@ -5,7 +5,7 @@ import { z } from "zod";
 import { config } from "../config.ts";
 import { sql } from "../db.ts";
 import { HttpError } from "../errors.ts";
-import { aiAvailable, generateComponent } from "../services/ai.ts";
+import { aiAvailable, analyzeDocument, generateComponent } from "../services/ai.ts";
 import { createComponent, deleteComponent, listComponents, updateComponent } from "../services/components.ts";
 import { applyDraft, describeComponents, loadComponents, loadDraft, refTitles } from "../services/entities.ts";
 import { deleteDocument, ingestBuffer } from "../services/ingest.ts";
@@ -152,6 +152,28 @@ export async function apiRoutes(app: FastifyInstance) {
       where entity_id = ${id} and status in ('inbox', 'filed', 'failed') returning entity_id`;
     if (!d) throw new HttpError(409, "The document is already being processed.");
     return { ok: true };
+  });
+
+  /**
+   * Asks the AI to revise an inbox proposal: takes the draft as the owner left
+   * it plus what they want changed, and stores the revised proposal.
+   */
+  app.post("/api/documents/:id/revise", async (req): Promise<Proposal> => {
+    if (!aiAvailable()) throw new HttpError(503, "AI is not configured (set ANTHROPIC_API_KEY).");
+    const { id } = IdParams.parse(req.params);
+    const body = z.object({ draft: DraftSchema, feedback: z.string().trim().min(2).max(4000) }).parse(req.body);
+    const [doc] = await sql<{ status: string; proposal: Proposal | null }[]>`select status, proposal from document where entity_id = ${id}`;
+    if (!doc) throw new HttpError(404, "Document not found.");
+    if (doc.status !== "inbox") throw new HttpError(409, "Only documents in the inbox can be revised.");
+    let proposal: Proposal;
+    try {
+      proposal = await analyzeDocument(id, { draft: body.draft, feedback: body.feedback, previousFeedback: doc.proposal?.feedback ?? [] });
+    } catch (err) {
+      if (err instanceof HttpError) throw err;
+      throw new HttpError(502, `The AI couldn't revise the proposal: ${(err as Error).message}`);
+    }
+    await sql`update document set proposal = ${sql.json(proposal as never)}, error = null where entity_id = ${id} and status = 'inbox'`;
+    return proposal;
   });
 
   app.delete("/api/documents/:id", async (req) => {

@@ -159,7 +159,15 @@ async function similarExamples(docId: string, content: string, catalog: Map<stri
   }));
 }
 
-export async function analyzeDocument(docId: string): Promise<Proposal> {
+/** A change request on an existing proposal: the draft as the owner left it, and what they want changed. */
+export interface Revision {
+  draft: Draft;
+  feedback: string;
+  /** Earlier change requests on this proposal, oldest first. */
+  previousFeedback: string[];
+}
+
+export async function analyzeDocument(docId: string, revision?: Revision): Promise<Proposal> {
   const [doc] = await sql<{ original_filename: string; content: string; archive_path: string | null; page_count: number | null; file_size: number }[]>`
     select original_filename, content, archive_path, page_count, file_size from document where entity_id = ${docId}`;
   if (!doc) throw new Error("Document not found");
@@ -195,7 +203,7 @@ export async function analyzeDocument(docId: string): Promise<Proposal> {
       doc.page_count ? `Pages: ${doc.page_count}` : "",
       attach ? "The PDF is attached; the OCR text below came from it." : "",
       `\n<document_text>\n${content || "(no text could be extracted)"}\n</document_text>${truncationNote}`,
-      "\nPropose the title, date and components for this document.",
+      revision ? revisionRequest(revision) : "\nPropose the title, date and components for this document.",
     ]
       .filter(Boolean)
       .join("\n"),
@@ -227,7 +235,68 @@ export async function analyzeDocument(docId: string): Promise<Proposal> {
   if (!parsed) throw new Error("The model's answer did not match the expected format.");
 
   const { draft, warnings } = toDraft(parsed, catalog, new Set(objects.map((o) => o.id)));
-  return { draft, reasoning: parsed.reasoning, model: response.model, createdAt: new Date().toISOString(), warnings };
+  if (revision) {
+    // The model doesn't see or return colours; keep the ones proposed components already had.
+    const colors = new Map(revision.draft.newComponents.map((c) => [c.key, c.color]));
+    for (const nc of draft.newComponents) nc.color ??= colors.get(nc.key);
+  }
+  return {
+    draft,
+    reasoning: parsed.reasoning,
+    model: response.model,
+    createdAt: new Date().toISOString(),
+    warnings,
+    ...(revision ? { feedback: [...revision.previousFeedback, revision.feedback] } : {}),
+  };
+}
+
+function revisionRequest(r: Revision): string {
+  return [
+    "\nYou already proposed metadata for this document, and the owner may have edited it since. This is the current proposal, in the output format:",
+    `<current_proposal>\n${JSON.stringify(draftToAnalysis(r.draft), null, 2)}\n</current_proposal>`,
+    r.previousFeedback.length
+      ? `Changes the owner asked for earlier (already reflected above):\n${r.previousFeedback.map((f) => `- ${f}`).join("\n")}`
+      : "",
+    `The owner now asks:\n<feedback>\n${r.feedback}\n</feedback>`,
+    "Revise the proposal to address this feedback. Keep everything the feedback doesn't concern exactly as it is in the current proposal, including the owner's edits. " +
+      "If the feedback changes a proposed component's fields, carry the document's values over to the new fields. " +
+      "In reasoning, say briefly what you changed.",
+  ]
+    .filter(Boolean)
+    .join("\n\n");
+}
+
+/** The inverse of toDraft: a draft in the model's output format, so it can be shown to the model. */
+export function draftToAnalysis(d: Draft): Omit<Analysis, "reasoning"> {
+  const components = (cs: Draft["components"]) =>
+    cs.map((c) => ({
+      component: c.component,
+      values: Object.entries(c.values)
+        .filter(([, v]) => v !== null && v !== "")
+        .map(([field, v]) => ({ field, value: String(v) })),
+    }));
+  return {
+    title: d.title,
+    document_date: d.documentDate,
+    components: components(d.components),
+    new_components: d.newComponents.map((nc) => ({
+      key: nc.key,
+      name: nc.name,
+      description: nc.description,
+      ai_hint: nc.aiHint,
+      fields: nc.fields.map((f) => ({
+        key: f.key,
+        label: f.label,
+        type: f.type,
+        description: f.description,
+        required: f.required,
+        choices: f.options.choices ?? [],
+        currency: f.options.currency ?? null,
+        ref_component: f.options.component ?? null,
+      })),
+    })),
+    new_objects: d.newObjects.map((o) => ({ temp_id: o.tempId, title: o.title, components: components(o.components) })),
+  };
 }
 
 /** Converts the model's output into a Draft, dropping anything that doesn't validate. */

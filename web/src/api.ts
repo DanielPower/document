@@ -10,6 +10,7 @@ import type {
   Draft,
   ObjectDetail,
   ObjectSummary,
+  Proposal,
 } from "./types";
 
 async function request<T>(method: string, url: string, body?: unknown): Promise<T> {
@@ -68,6 +69,7 @@ export const api = {
   ask: (question: string) => request<AskResponse>("POST", "/api/ai/ask", { question }),
   getDocument: (id: string) => request<DocumentDetail>("GET", `/api/documents/${id}`),
   saveDocument: (id: string, draft: Draft, file: boolean) => request<{ ok: true }>("PUT", `/api/documents/${id}/draft`, { draft, file }),
+  revise: (id: string, draft: Draft, feedback: string) => request<Proposal>("POST", `/api/documents/${id}/revise`, { draft, feedback }),
   reanalyze: (id: string, ocr = false) => request<{ ok: true }>("POST", `/api/documents/${id}/reanalyze`, { ocr }),
   deleteDocument: (id: string) => request<{ ok: true }>("DELETE", `/api/documents/${id}`),
   upload: (files: File[]) => {

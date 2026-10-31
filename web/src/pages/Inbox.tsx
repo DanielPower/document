@@ -23,11 +23,13 @@ const STATUS_CLASS: Record<string, string | undefined> = {
 export function InboxPage() {
   const { id: routeId } = useParams();
   const navigate = useNavigate();
-  const { catalog, objects, refresh, toast } = useAppData();
+  const { catalog, objects, refresh, toast, status } = useAppData();
   const [items, setItems] = useState<DocumentSummary[]>([]);
   const [doc, setDoc] = useState<DocumentDetail | null>(null);
   const [draft, setDraft] = useState<Draft | null>(null);
   const [busy, setBusy] = useState(false);
+  const [feedback, setFeedback] = useState("");
+  const [revising, setRevising] = useState(false);
 
   const loadList = useCallback(async () => {
     const res = await api.searchDocuments({ status: ["inbox", "failed", ...ACTIVE], sort: "added", limit: 200 });
@@ -66,6 +68,25 @@ export function InboxPage() {
     }).catch((e) => toast(e.message, "error"));
     return () => { cancelled = true; };
   }, [selectedId, selectedStatus, toast]);
+
+  // A half-written suggestion belongs to the document it was written for.
+  useEffect(() => setFeedback(""), [selectedId]);
+
+  /** Sends the draft as currently edited plus the suggestion; the AI's revision replaces the draft. */
+  const revise = async () => {
+    if (!doc || !draft || feedback.trim().length < 2) return;
+    setRevising(true);
+    try {
+      const proposal = await api.revise(doc.id, draft, feedback.trim());
+      setDoc({ ...doc, proposal, error: null });
+      setDraft(structuredClone(proposal.draft));
+      setFeedback("");
+    } catch (e) {
+      toast((e as Error).message, "error");
+    } finally {
+      setRevising(false);
+    }
+  };
 
   const next = () => {
     const idx = items.findIndex((i) => i.id === selectedId);
@@ -121,21 +142,48 @@ export function InboxPage() {
               <>
                 {doc.status === "failed" && <div className={cx(ui.alert, ui.error)}>Processing failed: {doc.error}</div>}
                 {doc.status === "inbox" && doc.error && <div className={cx(ui.alert, ui.warn)}>{doc.error}</div>}
-                {doc.proposal && (
+                {(doc.proposal || status?.ai) && (
                   <div className={ui.aiNote}>
-                    <div className={ui.aiNoteHead}>AI proposal <span className={cx(ui.muted, ui.small)}>({doc.proposal.model})</span></div>
-                    <p>{doc.proposal.reasoning}</p>
-                    {doc.proposal.warnings.length > 0 && (
-                      <details>
-                        <summary className={ui.small}>{doc.proposal.warnings.length} item(s) dropped while checking the proposal</summary>
-                        <ul className={ui.small}>{doc.proposal.warnings.map((w, i) => <li key={i}>{w}</li>)}</ul>
-                      </details>
+                    {doc.proposal && (
+                      <>
+                        <div className={ui.aiNoteHead}>AI proposal <span className={cx(ui.muted, ui.small)}>({doc.proposal.model})</span></div>
+                        <p>{doc.proposal.reasoning}</p>
+                        {doc.proposal.warnings.length > 0 && (
+                          <details>
+                            <summary className={ui.small}>{doc.proposal.warnings.length} item(s) dropped while checking the proposal</summary>
+                            <ul className={ui.small}>{doc.proposal.warnings.map((w, i) => <li key={i}>{w}</li>)}</ul>
+                          </details>
+                        )}
+                      </>
+                    )}
+                    {status?.ai && doc.status === "inbox" && (
+                      <form className={styles.revise} onSubmit={(e) => { e.preventDefault(); void revise(); }}>
+                        {!!doc.proposal?.feedback?.length && (
+                          <ul className={cx(ui.small, ui.muted, styles.feedbackList)}>
+                            {doc.proposal.feedback.map((f, i) => <li key={i}>You asked: {f}</li>)}
+                          </ul>
+                        )}
+                        <textarea
+                          rows={2}
+                          value={feedback}
+                          disabled={revising}
+                          onChange={(e) => setFeedback(e.target.value)}
+                          onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); void revise(); } }}
+                          placeholder={doc.proposal ? "Suggest a change, e.g. \u201cuse an amount and a billing frequency instead of an annual amount\u201d" : "Tell the AI how to file this document"}
+                        />
+                        <div className={styles.reviseActions}>
+                          <span className={cx(ui.small, ui.muted)}>Your edits below are kept unless you ask to change them.</span>
+                          <button disabled={revising || feedback.trim().length < 2}>{revising ? "Revising…" : "Revise"}</button>
+                        </div>
+                      </form>
                     )}
                   </div>
                 )}
-                <DraftEditor draft={draft} onChange={setDraft} catalog={catalog} objects={objects} showDate selfId={doc.id} />
+                <fieldset className={styles.editorFieldset} disabled={revising}>
+                  <DraftEditor draft={draft} onChange={setDraft} catalog={catalog} objects={objects} showDate selfId={doc.id} />
+                </fieldset>
                 <div className={ui.actions}>
-                  <button className={ui.primary} disabled={busy || doc.status !== "inbox"} onClick={file}>
+                  <button className={ui.primary} disabled={busy || revising || doc.status !== "inbox"} onClick={file}>
                     {draft.newComponents.length || draft.newObjects.length ? "Create & file" : "File document"}
                   </button>
                   <button disabled={busy} onClick={() => setDraft(structuredClone(doc.proposal?.draft ?? doc.current))}>Reset</button>

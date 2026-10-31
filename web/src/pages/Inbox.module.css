@@ -15,3 +15,8 @@
   .page { flex: none; grid-template-columns: 1fr; grid-template-rows: none; }
   .list { max-height: 30vh; }
 }
+.revise { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; }
+.reviseActions { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.feedbackList { margin: 0; padding-left: 18px; }
+.editorFieldset { border: none; margin: 0; padding: 0; min-width: 0; }
+.editorFieldset:disabled { opacity: 0.6; }

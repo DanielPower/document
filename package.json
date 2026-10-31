@@ -9,7 +9,7 @@
     "dev": "npm run dev --workspace server & npm run dev --workspace web",
     "build": "npm run build --workspace web",
     "start": "npm run start --workspace server",
-    "test": "npm test --workspace server",
+    "test": "npm test --workspace server && npm test --workspace web",
     "typecheck": "npm run typecheck --workspace server && npm run typecheck --workspace web"
   },
   "engines": {

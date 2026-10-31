@@ -1,6 +1,7 @@
 import { useMemo } from "react";
 import type { ComponentDef, ComponentInput, Draft, DraftComponent, DraftValue, FieldDef, ObjectSummary } from "../types";
 import { cx } from "../cx";
+import { migrateComponentValues } from "../migrateValues";
 import ui from "../ui.module.css";
 import { ComponentDefEditor } from "./ComponentDefEditor";
 import styles from "./DraftEditor.module.css";
@@ -112,8 +113,9 @@ export function DraftEditor(props: {
                 catalog={catalog}
                 compact
                 onChange={(v: ComponentInput) => {
-                  // Keep uses in sync when the key is renamed.
-                  const rename = (cs: DraftComponent[]) => cs.map((c) => (c.component === nc.key ? { ...c, component: v.key } : c));
+                  // Keep the values already filled in for this component valid: follow renamed
+                  // fields and keys, convert changed types, drop what no longer fits.
+                  const rename = (cs: DraftComponent[]) => migrateComponentValues(nc, v, cs);
                   onChange({
                     ...draft,
                     newComponents: draft.newComponents.map((x, j) => (j === i ? v : x)),

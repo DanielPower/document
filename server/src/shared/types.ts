@@ -88,6 +88,8 @@ export interface Proposal {
   createdAt: string;
   /** Issues found while validating the model's output (dropped values etc.). */
   warnings: string[];
+  /** Change requests the owner made, oldest first; each revision saw all of them. */
+  feedback?: string[];
 }
 
 export type DocumentStatus = "queued" | "ocr" | "analyzing" | "inbox" | "filed" | "failed";
