@@ -2,7 +2,9 @@ import { useEffect, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { api } from "../api";
 import { DraftEditor } from "../components/DraftEditor";
+import { cx } from "../cx";
 import { useAppData } from "../data";
+import ui from "../ui.module.css";
 import type { DocumentSummary, Draft } from "../types";
 
 const EMPTY: Draft = { title: "", documentDate: null, components: [], newComponents: [], newObjects: [] };
@@ -24,7 +26,7 @@ export function ObjectPage() {
     api.searchDocuments({ ref: id, limit: 100 }).then((r) => setDocs(r.items)).catch(() => {});
   }, [id, isNew, toast]);
 
-  if (!draft) return <div className="page muted">Loading…</div>;
+  if (!draft) return <div className={cx(ui.page, ui.muted)}>Loading…</div>;
 
   const save = async () => {
     setBusy(true);
@@ -49,20 +51,20 @@ export function ObjectPage() {
   };
 
   return (
-    <div className="page narrow">
+    <div className={cx(ui.page, ui.narrow)}>
       <p><Link to="/objects">← Objects</Link></p>
       <DraftEditor draft={draft} onChange={setDraft} catalog={catalog} objects={objects} selfId={isNew ? undefined : id} />
       <label>
         Notes
         <textarea rows={3} value={notes} onChange={(e) => setNotes(e.target.value)} />
       </label>
-      <div className="actions">
-        <button className="primary" disabled={busy || !draft.title.trim()} onClick={save}>{isNew ? "Create" : "Save"}</button>
+      <div className={ui.actions}>
+        <button className={ui.primary} disabled={busy || !draft.title.trim()} onClick={save}>{isNew ? "Create" : "Save"}</button>
         {!isNew && <button disabled={busy} onClick={() => setDraft(structuredClone(original))}>Revert</button>}
-        <span className="spacer" />
+        <span className={ui.spacer} />
         {!isNew && (
           <button
-            className="danger"
+            className={ui.danger}
             disabled={busy}
             onClick={async () => {
               if (!confirm(`Delete this object? ${docs.length} document(s) link to it; those links will be cleared.`)) return;
@@ -76,11 +78,11 @@ export function ObjectPage() {
       {!isNew && (
         <>
           <h3>Linked documents ({docs.length})</h3>
-          <div className="list">
+          <div className={ui.list}>
             {docs.map((d) => (
-              <Link key={d.id} to={`/documents/${d.id}`} className="list-item">
-                <div className="title">{d.title}</div>
-                <span className="muted small">{d.documentDate ?? ""}</span>
+              <Link key={d.id} to={`/documents/${d.id}`} className={ui.listItem}>
+                <div className={ui.listTitle}>{d.title}</div>
+                <span className={cx(ui.muted, ui.small)}>{d.documentDate ?? ""}</span>
               </Link>
             ))}
           </div>

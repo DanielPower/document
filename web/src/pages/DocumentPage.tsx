@@ -2,9 +2,12 @@ import { useEffect, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { api, fileUrl } from "../api";
 import { DraftEditor } from "../components/DraftEditor";
-import { Preview, STATUS_LABEL } from "../components/Preview";
+import { Preview, STATUS_LABEL, TextPreview } from "../components/Preview";
+import { cx } from "../cx";
 import { useAppData } from "../data";
 import type { DocumentDetail, Draft } from "../types";
+import ui from "../ui.module.css";
+import styles from "./DocumentPage.module.css";
 
 export function DocumentPage() {
   const { id } = useParams();
@@ -22,7 +25,7 @@ export function DocumentPage() {
   };
   useEffect(() => { load().catch((e) => toast(e.message, "error")); }, [id]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  if (!doc || !draft) return <div className="page muted">Loading…</div>;
+  if (!doc || !draft) return <div className={cx(ui.page, ui.muted)}>Loading…</div>;
 
   const act = async (fn: () => Promise<unknown>, done: string) => {
     setBusy(true);
@@ -39,33 +42,33 @@ export function DocumentPage() {
   };
 
   return (
-    <div className="doc-page">
-      <section className="doc-left">
-        <div className="tabs">
-          <button className={tab === "preview" ? "on" : ""} onClick={() => setTab("preview")}>Preview</button>
-          <button className={tab === "text" ? "on" : ""} onClick={() => setTab("text")}>Text</button>
-          <span className="spacer" />
+    <div className={styles.page}>
+      <section className={styles.left}>
+        <div className={styles.tabs}>
+          <button className={cx(tab === "preview" && styles.tabOn)} onClick={() => setTab("preview")}>Preview</button>
+          <button className={cx(tab === "text" && styles.tabOn)} onClick={() => setTab("text")}>Text</button>
+          <span className={ui.spacer} />
           <a href={fileUrl(doc.id, "original", true)}>Original</a>
           {doc.hasArchive && <a href={fileUrl(doc.id, "archive", true)}>Searchable PDF</a>}
         </div>
-        {tab === "preview" ? <Preview doc={doc} /> : <pre className="preview text">{doc.content || "(no text)"}</pre>}
+        {tab === "preview" ? <Preview doc={doc} /> : <TextPreview text={doc.content || "(no text)"} />}
       </section>
-      <section className="doc-right">
-        <div className="muted small">
+      <section className={styles.right}>
+        <div className={cx(ui.muted, ui.small)}>
           {doc.originalFilename} · {STATUS_LABEL[doc.status]} · added {new Date(doc.addedAt).toLocaleDateString()}
           {doc.status === "inbox" && <> · <Link to={`/inbox/${doc.id}`}>review in inbox</Link></>}
         </div>
         <DraftEditor draft={draft} onChange={setDraft} catalog={catalog} objects={objects} showDate selfId={doc.id} />
-        <div className="actions">
+        <div className={ui.actions}>
           <button
-            className="primary"
+            className={ui.primary}
             disabled={busy}
             onClick={async () => { if (await act(() => api.saveDocument(doc.id, draft, false), "Saved")) { await refresh(); await load(); } }}
           >
             Save
           </button>
           <button disabled={busy} onClick={() => setDraft(structuredClone(doc.current))}>Revert</button>
-          <span className="spacer" />
+          <span className={ui.spacer} />
           <button
             disabled={busy}
             title="Send it back to the inbox with a fresh AI proposal"
@@ -74,7 +77,7 @@ export function DocumentPage() {
             Re-analyze
           </button>
           <button
-            className="danger"
+            className={ui.danger}
             disabled={busy}
             onClick={async () => { if (confirm("Delete this document and its files?") && (await act(() => api.deleteDocument(doc.id), "Deleted"))) navigate("/documents"); }}
           >

@@ -178,6 +178,11 @@ server/src/
 web/src/
   components/DraftEditor.tsx  the metadata editor used in the inbox, on documents, and on objects
   pages/                      Inbox, Documents (search), Ask, Objects, Components
+  global.css                  CSS variables and element defaults only (no classes)
+  ui.module.css               shared classes: buttons, alerts, badges, lists, page layout
+  *.module.css                each component's own styles (CSS Modules)
+web/scripts/check-css-modules.mjs  run by `npm run typecheck`: no classes in global.css, no literal
+                                   class names, and every styles.x exists in its module
 ```
 
 ### Data model notes

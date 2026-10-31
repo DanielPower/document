@@ -1,7 +1,10 @@
 import { useState, type ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { api } from "../api";
+import { cx } from "../cx";
 import { useAppData } from "../data";
+import ui from "../ui.module.css";
+import styles from "./Ask.module.css";
 import type { AskResponse } from "../types";
 
 interface Exchange {
@@ -39,14 +42,14 @@ export function AskPage() {
   };
 
   if (status && !status.ai) {
-    return <div className="page narrow"><h2>Ask</h2><p className="muted">Ask needs AI. Set ANTHROPIC_API_KEY to turn it on.</p></div>;
+    return <div className={cx(ui.page, ui.narrow)}><h2>Ask</h2><p className={ui.muted}>Ask needs AI. Set ANTHROPIC_API_KEY to turn it on.</p></div>;
   }
 
   return (
-    <div className="page narrow ask">
+    <div className={cx(ui.page, ui.narrow)}>
       <h2>Ask</h2>
-      <p className="muted">Questions about your documents. Answers link to the documents they come from; each question is answered on its own.</p>
-      <form onSubmit={(e) => { e.preventDefault(); void ask(question); }}>
+      <p className={ui.muted}>Questions about your documents. Answers link to the documents they come from; each question is answered on its own.</p>
+      <form className={styles.form} onSubmit={(e) => { e.preventDefault(); void ask(question); }}>
         <textarea
           rows={2}
           value={question}
@@ -55,18 +58,18 @@ export function AskPage() {
           placeholder="e.g. What did the plumber fix, and did I pay it?"
           autoFocus
         />
-        <div className="actions">
-          <button className="primary" disabled={busy || !question.trim()}>{busy ? "Looking…" : "Ask"}</button>
+        <div className={cx(ui.actions, styles.actions)}>
+          <button className={ui.primary} disabled={busy || !question.trim()}>{busy ? "Looking…" : "Ask"}</button>
           {history.length === 0 &&
-            EXAMPLES.map((ex) => <button type="button" key={ex} className="link small" onClick={() => void ask(ex)}>{ex}</button>)}
+            EXAMPLES.map((ex) => <button type="button" key={ex} className={cx(ui.link, ui.small)} onClick={() => void ask(ex)}>{ex}</button>)}
         </div>
       </form>
 
       {history.map((x, i) => (
-        <div className="exchange" key={history.length - i}>
-          <div className="question">{x.question}</div>
-          {!x.response && !x.error && <p className="muted status status-analyzing">Searching your documents…</p>}
-          {x.error && <div className="alert error">{x.error}</div>}
+        <div className={styles.exchange} key={history.length - i}>
+          <div className={styles.question}>{x.question}</div>
+          {!x.response && !x.error && <p className={cx(ui.muted, ui.pulse)}>Searching your documents…</p>}
+          {x.error && <div className={cx(ui.alert, ui.error)}>{x.error}</div>}
           {x.response && <Answer response={x.response} />}
         </div>
       ))}
@@ -82,7 +85,7 @@ function Answer({ response }: { response: AskResponse }) {
     for (const m of line.matchAll(/\[\[doc:([0-9a-f-]{36})\]\]/gi)) {
       parts.push(line.slice(last, m.index));
       const n = number.get(m[1]);
-      if (n) parts.push(<Link key={`${key}-${m.index}`} className="cite" to={`/documents/${m[1]}`}>{n}</Link>);
+      if (n) parts.push(<Link key={`${key}-${m.index}`} className={styles.cite} to={`/documents/${m[1]}`}>{n}</Link>);
       last = m.index! + m[0].length;
     }
     parts.push(line.slice(last));
@@ -106,17 +109,17 @@ function Answer({ response }: { response: AskResponse }) {
   flush();
 
   return (
-    <div className="answer">
+    <div className={styles.answer}>
       {blocks}
       {response.citations.length > 0 && (
-        <ol className="citations">
+        <ol className={styles.citations}>
           {response.citations.map((c) => (
-            <li key={c.id}><Link to={`/documents/${c.id}`}>{c.title}</Link>{c.documentDate && <span className="muted small"> · {c.documentDate}</span>}</li>
+            <li key={c.id}><Link to={`/documents/${c.id}`}>{c.title}</Link>{c.documentDate && <span className={cx(ui.muted, ui.small)}> · {c.documentDate}</span>}</li>
           ))}
         </ol>
       )}
       {response.steps.length > 0 && (
-        <details className="small muted">
+        <details className={cx(ui.small, ui.muted)}>
           <summary>How this was found ({response.steps.length} step{response.steps.length === 1 ? "" : "s"})</summary>
           <ul>{response.steps.map((s, i) => <li key={i}>{s}</li>)}</ul>
         </details>

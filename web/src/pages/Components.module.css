@@ -1,0 +1,6 @@
+.layout { display: grid; grid-template-columns: minmax(300px, 420px) 1fr; gap: 16px; align-items: start; }
+.panel { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); padding: 14px 16px; position: sticky; top: 64px; }
+.generate { display: flex; flex-direction: column; gap: 6px; align-items: flex-start; margin: 4px 0 8px; }
+@media (max-width: 1000px) {
+  .layout { grid-template-columns: 1fr; }
+}

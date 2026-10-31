@@ -1,6 +1,9 @@
 import { useMemo } from "react";
 import type { ComponentDef, ComponentInput, Draft, DraftComponent, DraftValue, FieldDef, ObjectSummary } from "../types";
+import { cx } from "../cx";
+import ui from "../ui.module.css";
 import { ComponentDefEditor } from "./ComponentDefEditor";
+import styles from "./DraftEditor.module.css";
 
 type Def = Pick<ComponentDef, "key" | "name" | "color" | "description"> & { fields: Array<Omit<FieldDef, "id" | "position">>; isNew?: boolean };
 
@@ -75,9 +78,9 @@ export function DraftEditor(props: {
   };
 
   return (
-    <div className="draft-editor">
-      <div className="row">
-        <label className="grow">
+    <div className={styles.editor}>
+      <div className={ui.row}>
+        <label className={ui.grow}>
           Title
           <input value={draft.title} onChange={(e) => set({ title: e.target.value })} />
         </label>
@@ -99,11 +102,11 @@ export function DraftEditor(props: {
       />
 
       {draft.newComponents.length > 0 && (
-        <section className="proposed">
+        <section className={styles.proposed}>
           <h4>New component definitions</h4>
-          <p className="muted small">These will be created when you save. Edit or discard them.</p>
+          <p className={cx(ui.muted, ui.small)}>These will be created when you save. Edit or discard them.</p>
           {draft.newComponents.map((nc, i) => (
-            <div className="proposed-item" key={i}>
+            <div className={styles.proposedItem} key={i}>
               <ComponentDefEditor
                 value={nc}
                 catalog={catalog}
@@ -119,18 +122,18 @@ export function DraftEditor(props: {
                   });
                 }}
               />
-              <button className="small danger" onClick={() => discardNewComponent(nc.key)}>Discard “{nc.name}”</button>
+              <button className={cx(ui.compact, ui.danger)} onClick={() => discardNewComponent(nc.key)}>Discard “{nc.name}”</button>
             </div>
           ))}
         </section>
       )}
 
       {draft.newObjects.length > 0 && (
-        <section className="proposed">
+        <section className={styles.proposed}>
           <h4>New objects</h4>
-          <p className="muted small">Things this document refers to that don't exist yet. They'll be created when you save.</p>
+          <p className={cx(ui.muted, ui.small)}>Things this document refers to that don't exist yet. They'll be created when you save.</p>
           {draft.newObjects.map((o, i) => (
-            <div className="proposed-item" key={o.tempId}>
+            <div className={styles.proposedItem} key={o.tempId}>
               <label>
                 Title
                 <input
@@ -146,13 +149,13 @@ export function DraftEditor(props: {
                 withDraft={(cs, d) => ({ ...d, newObjects: d.newObjects.map((x) => (x.tempId === o.tempId ? { ...x, components: cs } : x)) })}
                 pickFrom={[...defs.values()]}
               />
-              <button className="small danger" onClick={() => discardNewObject(o.tempId)}>Discard “{o.title}”</button>
+              <button className={cx(ui.compact, ui.danger)} onClick={() => discardNewObject(o.tempId)}>Discard “{o.title}”</button>
             </div>
           ))}
         </section>
       )}
       {draft.newObjects.length === 0 && (
-        <button className="link small" onClick={() => addNewObject()}>+ Create a new object alongside this</button>
+        <button className={cx(ui.link, ui.small, styles.newObjectLink)} onClick={() => addNewObject()}>+ Create a new object alongside this</button>
       )}
     </div>
   );
@@ -178,20 +181,20 @@ function ComponentList(props: {
   const { ctx, components, onChange } = props;
   const attached = new Set(components.map((c) => c.component));
   return (
-    <div className="component-list">
+    <div className={styles.componentList}>
       {components.map((c, i) => {
         const def = ctx.defs.get(c.component);
         const update = (values: DraftComponent["values"]) => onChange(components.map((x, j) => (j === i ? { ...x, values } : x)));
         return (
-          <div className="component-card" key={i} style={{ borderLeftColor: def?.color ?? "#999" }}>
-            <div className="component-card-head">
-              <span className="component-name">{def?.name ?? c.component}</span>
-              {def?.isNew && <span className="badge new">new</span>}
-              {!def && <span className="badge warn">unknown component</span>}
-              <button className="icon" title="Remove component" onClick={() => onChange(components.filter((_, j) => j !== i))}>✕</button>
+          <div className={styles.componentCard} key={i} style={{ borderLeftColor: def?.color ?? "#999" }}>
+            <div className={styles.componentCardHead}>
+              <span className={styles.componentName}>{def?.name ?? c.component}</span>
+              {def?.isNew && <span className={cx(ui.badge, ui.badgeNew)}>new</span>}
+              {!def && <span className={cx(ui.badge, ui.badgeWarn)}>unknown component</span>}
+              <button className={ui.icon} title="Remove component" onClick={() => onChange(components.filter((_, j) => j !== i))}>✕</button>
             </div>
             {def && def.fields.length > 0 && (
-              <div className="field-grid">
+              <div className={styles.fieldGrid}>
                 {def.fields.map((f) => (
                   <FieldInput
                     key={f.key}
@@ -212,7 +215,7 @@ function ComponentList(props: {
         );
       })}
       <select
-        className="add-component"
+        className={styles.addComponent}
         value=""
         onChange={(e) => e.target.value && onChange([...components, { component: e.target.value, values: {} }])}
       >
@@ -240,9 +243,9 @@ function FieldInput(props: {
 }) {
   const { field: f, value, onChange } = props;
   const label = (
-    <span className="field-label" title={f.description}>
+    <span title={f.description}>
       {f.label}
-      {f.required && <span className="req">*</span>}
+      {f.required && <span className={styles.req}>*</span>}
     </span>
   );
   const str = value === null || value === undefined ? "" : String(value);
@@ -255,14 +258,14 @@ function FieldInput(props: {
     case "number":
     case "money":
       input = (
-        <div className="with-suffix">
+        <div className={styles.withSuffix}>
           <input
             type="number"
             step={f.type === "money" ? "0.01" : "any"}
             value={str}
             onChange={(e) => onChange(e.target.value === "" ? null : Number(e.target.value))}
           />
-          {f.type === "money" && f.options.currency && <span className="suffix">{f.options.currency}</span>}
+          {f.type === "money" && f.options.currency && <span className={styles.suffix}>{f.options.currency}</span>}
         </div>
       );
       break;
@@ -325,7 +328,7 @@ function FieldInput(props: {
       input = <input value={str} onChange={(e) => onChange(e.target.value || null)} />;
   }
   return (
-    <label className={`field ${f.type === "longtext" ? "wide" : ""}`}>
+    <label className={cx(styles.field, f.type === "longtext" && styles.fieldWide)}>
       {label}
       {input}
     </label>

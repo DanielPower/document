@@ -1,4 +1,7 @@
+import { cx } from "../cx";
 import { FIELD_TYPES, type ComponentDef, type ComponentInput, type FieldType } from "../types";
+import ui from "../ui.module.css";
+import styles from "./ComponentDefEditor.module.css";
 
 export function slugify(s: string): string {
   const k = s.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "");
@@ -41,9 +44,9 @@ export function ComponentDefEditor(props: {
   };
 
   return (
-    <div className="def-editor">
-      <div className="row">
-        <label className="grow">
+    <div className={styles.editor}>
+      <div className={ui.row}>
+        <label className={ui.grow}>
           Name
           <input
             value={c.name}
@@ -53,7 +56,7 @@ export function ComponentDefEditor(props: {
         </label>
         <label>
           Key
-          <input value={c.key} onChange={(e) => set({ key: e.target.value })} placeholder="invoice" className="mono" />
+          <input value={c.key} onChange={(e) => set({ key: e.target.value })} placeholder="invoice" className={ui.mono} />
         </label>
         <label>
           Colour
@@ -71,19 +74,19 @@ export function ComponentDefEditor(props: {
         </label>
       )}
 
-      <div className="fields-head">
+      <div className={styles.fieldsHead}>
         <strong>Fields</strong>
-        {c.fields.length === 0 && <span className="muted"> — none: this component works as a tag</span>}
+        {c.fields.length === 0 && <span className={ui.muted}> — none: this component works as a tag</span>}
       </div>
       {c.fields.map((f, i) => (
-        <div className="field-row" key={f.id ?? i}>
+        <div className={styles.fieldRow} key={f.id ?? i}>
           <input
-            className="grow"
+            className={ui.grow}
             value={f.label}
             placeholder="Label"
             onChange={(e) => setField(i, { label: e.target.value, ...(!f.id ? { key: slugify(e.target.value) } : {}) })}
           />
-          <input className="mono key" value={f.key} placeholder="key" onChange={(e) => setField(i, { key: e.target.value })} />
+          <input className={cx(ui.mono, styles.keyInput)} value={f.key} placeholder="key" onChange={(e) => setField(i, { key: e.target.value })} />
           <select value={f.type} onChange={(e) => setField(i, { type: e.target.value as FieldType, options: {} })}>
             {FIELD_TYPES.map((t) => (
               <option key={t} value={t}>{TYPE_LABELS[t]}</option>
@@ -91,7 +94,7 @@ export function ComponentDefEditor(props: {
           </select>
           {f.type === "select" && (
             <input
-              className="grow"
+              className={ui.grow}
               placeholder="choice 1, choice 2"
               value={(f.options.choices ?? []).join(", ")}
               onChange={(e) => setField(i, { options: { choices: e.target.value.split(",").map((s) => s.trimStart()) } })}
@@ -99,7 +102,7 @@ export function ComponentDefEditor(props: {
           )}
           {f.type === "money" && (
             <input
-              className="currency"
+              className={styles.currencyInput}
               placeholder="CAD"
               value={f.options.currency ?? ""}
               onChange={(e) => setField(i, { options: { currency: e.target.value.toUpperCase() } })}
@@ -117,16 +120,16 @@ export function ComponentDefEditor(props: {
               ))}
             </select>
           )}
-          <label className="inline" title="Required">
+          <label className={ui.inline} title="Required">
             <input type="checkbox" checked={f.required} onChange={(e) => setField(i, { required: e.target.checked })} /> req
           </label>
-          <button className="icon" onClick={() => move(i, -1)} disabled={i === 0} title="Move up">↑</button>
-          <button className="icon" onClick={() => move(i, 1)} disabled={i === c.fields.length - 1} title="Move down">↓</button>
-          <button className="icon danger" onClick={() => set({ fields: c.fields.filter((_, j) => j !== i) })} title="Remove field">✕</button>
+          <button className={ui.icon} onClick={() => move(i, -1)} disabled={i === 0} title="Move up">↑</button>
+          <button className={ui.icon} onClick={() => move(i, 1)} disabled={i === c.fields.length - 1} title="Move down">↓</button>
+          <button className={cx(ui.icon, ui.danger)} onClick={() => set({ fields: c.fields.filter((_, j) => j !== i) })} title="Remove field">✕</button>
         </div>
       ))}
       <button
-        className="small"
+        className={cx(ui.compact, styles.addField)}
         onClick={() => set({ fields: [...c.fields, { key: "", label: "", type: "text", description: "", required: false, options: {} }] })}
       >
         + Add field

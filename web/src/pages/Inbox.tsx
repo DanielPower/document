@@ -3,10 +3,22 @@ import { useNavigate, useParams } from "react-router-dom";
 import { api, thumbUrl } from "../api";
 import { DraftEditor } from "../components/DraftEditor";
 import { Preview, STATUS_LABEL } from "../components/Preview";
+import { cx } from "../cx";
 import { useAppData } from "../data";
+import ui from "../ui.module.css";
+import styles from "./Inbox.module.css";
 import type { DocumentDetail, DocumentSummary, Draft } from "../types";
 
 const ACTIVE = ["queued", "ocr", "analyzing"];
+
+/** Explicit mapping: a status value is never used as a class name itself. */
+const STATUS_CLASS: Record<string, string | undefined> = {
+  inbox: styles.statusReady,
+  failed: styles.statusFailed,
+  queued: ui.pulse,
+  ocr: ui.pulse,
+  analyzing: ui.pulse,
+};
 
 export function InboxPage() {
   const { id: routeId } = useParams();
@@ -82,15 +94,15 @@ export function InboxPage() {
   };
 
   return (
-    <div className="inbox-page">
-      <aside className="inbox-list">
-        {items.length === 0 && <p className="muted pad">Inbox is empty. Drop files anywhere to add documents.</p>}
+    <div className={styles.page}>
+      <aside className={styles.list}>
+        {items.length === 0 && <p className={cx(ui.muted, ui.pad)}>Inbox is empty. Drop files anywhere to add documents.</p>}
         {items.map((i) => (
-          <button key={i.id} className={`inbox-item ${i.id === selectedId ? "active" : ""}`} onClick={() => navigate(`/inbox/${i.id}`)}>
-            {i.hasThumb ? <img src={thumbUrl(i.id)} alt="" /> : <div className="thumb-ph">{i.mimeType.split("/")[1]}</div>}
+          <button key={i.id} className={cx(styles.item, i.id === selectedId && styles.itemActive)} onClick={() => navigate(`/inbox/${i.id}`)}>
+            {i.hasThumb ? <img className={styles.thumb} src={thumbUrl(i.id)} alt="" /> : <div className={ui.thumbPlaceholder}>{i.mimeType.split("/")[1]}</div>}
             <div>
-              <div className="title">{i.title}</div>
-              <div className={`status status-${i.status}`}>{i.status === "queued" && i.error ? "Failed, retrying soon" : STATUS_LABEL[i.status]}</div>
+              <div className={styles.title}>{i.title}</div>
+              <div className={cx(styles.status, STATUS_CLASS[i.status])}>{i.status === "queued" && i.error ? "Failed, retrying soon" : STATUS_LABEL[i.status]}</div>
             </div>
           </button>
         ))}
@@ -98,40 +110,40 @@ export function InboxPage() {
 
       {doc && draft ? (
         <>
-          <section className="inbox-preview"><Preview doc={doc} /></section>
-          <section className="inbox-editor">
+          <section className={styles.preview}><Preview doc={doc} /></section>
+          <section className={styles.editor}>
             {ACTIVE.includes(doc.status) ? (
               <>
-                <p className="muted">{doc.status === "queued" && doc.error ? "Failed, retrying soon" : STATUS_LABEL[doc.status]}</p>
-                {doc.error && <div className="alert warn">{doc.error}</div>}
+                <p className={ui.muted}>{doc.status === "queued" && doc.error ? "Failed, retrying soon" : STATUS_LABEL[doc.status]}</p>
+                {doc.error && <div className={cx(ui.alert, ui.warn)}>{doc.error}</div>}
               </>
             ) : (
               <>
-                {doc.status === "failed" && <div className="alert error">Processing failed: {doc.error}</div>}
-                {doc.status === "inbox" && doc.error && <div className="alert warn">{doc.error}</div>}
+                {doc.status === "failed" && <div className={cx(ui.alert, ui.error)}>Processing failed: {doc.error}</div>}
+                {doc.status === "inbox" && doc.error && <div className={cx(ui.alert, ui.warn)}>{doc.error}</div>}
                 {doc.proposal && (
-                  <div className="ai-note">
-                    <div className="ai-note-head">AI proposal <span className="muted small">({doc.proposal.model})</span></div>
+                  <div className={ui.aiNote}>
+                    <div className={ui.aiNoteHead}>AI proposal <span className={cx(ui.muted, ui.small)}>({doc.proposal.model})</span></div>
                     <p>{doc.proposal.reasoning}</p>
                     {doc.proposal.warnings.length > 0 && (
                       <details>
-                        <summary className="small">{doc.proposal.warnings.length} item(s) dropped while checking the proposal</summary>
-                        <ul className="small">{doc.proposal.warnings.map((w, i) => <li key={i}>{w}</li>)}</ul>
+                        <summary className={ui.small}>{doc.proposal.warnings.length} item(s) dropped while checking the proposal</summary>
+                        <ul className={ui.small}>{doc.proposal.warnings.map((w, i) => <li key={i}>{w}</li>)}</ul>
                       </details>
                     )}
                   </div>
                 )}
                 <DraftEditor draft={draft} onChange={setDraft} catalog={catalog} objects={objects} showDate selfId={doc.id} />
-                <div className="actions">
-                  <button className="primary" disabled={busy || doc.status !== "inbox"} onClick={file}>
+                <div className={ui.actions}>
+                  <button className={ui.primary} disabled={busy || doc.status !== "inbox"} onClick={file}>
                     {draft.newComponents.length || draft.newObjects.length ? "Create & file" : "File document"}
                   </button>
                   <button disabled={busy} onClick={() => setDraft(structuredClone(doc.proposal?.draft ?? doc.current))}>Reset</button>
-                  <span className="spacer" />
+                  <span className={ui.spacer} />
                   <button disabled={busy} onClick={() => act(() => api.reanalyze(doc.id), "Re-running AI…")}>Re-run AI</button>
                   <button disabled={busy} onClick={() => act(() => api.reanalyze(doc.id, true), "Re-running OCR and AI…")}>Redo OCR</button>
                   <button
-                    className="danger"
+                    className={ui.danger}
                     disabled={busy}
                     onClick={async () => { if (confirm("Delete this document and its files?") && (await act(() => api.deleteDocument(doc.id), "Deleted"))) next(); }}
                   >
@@ -143,7 +155,7 @@ export function InboxPage() {
           </section>
         </>
       ) : (
-        <section className="inbox-preview empty muted">{items.length ? "Select a document" : ""}</section>
+        <section className={cx(styles.preview, styles.previewEmpty)}>{items.length ? "Select a document" : ""}</section>
       )}
     </div>
   );

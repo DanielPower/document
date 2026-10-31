@@ -1,6 +1,9 @@
 import { useRef, useState, type DragEvent } from "react";
 import { NavLink, Route, Routes, useNavigate } from "react-router-dom";
+import styles from "./App.module.css";
 import { api } from "./api";
+import { cx } from "./cx";
+import ui from "./ui.module.css";
 import { AppDataProvider, useAppData } from "./data";
 import { AskPage } from "./pages/Ask";
 import { ComponentsPage } from "./pages/Components";
@@ -17,6 +20,9 @@ export function App() {
     </AppDataProvider>
   );
 }
+
+/** NavLink passes isActive; replaces its default global "active" class. */
+const navClass = ({ isActive }: { isActive: boolean }) => cx(styles.navLink, isActive && styles.navLinkActive);
 
 function Shell() {
   const { status, toast, refresh } = useAppData();
@@ -47,7 +53,7 @@ function Shell() {
 
   return (
     <div
-      className="shell"
+      className={styles.shell}
       onDragEnter={(e) => { if (hasFiles(e)) { dragDepth.current++; setDragging(true); } }}
       onDragLeave={() => { if (--dragDepth.current <= 0) { dragDepth.current = 0; setDragging(false); } }}
       onDragOver={(e) => hasFiles(e) && e.preventDefault()}
@@ -58,21 +64,21 @@ function Shell() {
         void upload([...e.dataTransfer.files]);
       }}
     >
-      <header className="topbar">
-        <span className="brand">Docket</span>
-        <nav>
-          <NavLink to="/" end>
-            Inbox {inbox > 0 && <span className="count">{inbox}</span>}
-            {processing > 0 && <span className="count processing" title="Processing">{processing}…</span>}
+      <header className={styles.topbar}>
+        <span className={styles.brand}>Docket</span>
+        <nav className={styles.nav}>
+          <NavLink to="/" end className={navClass}>
+            Inbox {inbox > 0 && <span className={styles.count}>{inbox}</span>}
+            {processing > 0 && <span className={cx(styles.count, styles.countProcessing)} title="Processing">{processing}…</span>}
           </NavLink>
-          <NavLink to="/documents">Documents</NavLink>
-          {status?.ai && <NavLink to="/ask">Ask</NavLink>}
-          <NavLink to="/objects">Objects</NavLink>
-          <NavLink to="/components">Components</NavLink>
+          <NavLink to="/documents" className={navClass}>Documents</NavLink>
+          {status?.ai && <NavLink to="/ask" className={navClass}>Ask</NavLink>}
+          <NavLink to="/objects" className={navClass}>Objects</NavLink>
+          <NavLink to="/components" className={navClass}>Components</NavLink>
         </nav>
-        <span className="spacer" />
-        {status && !status.ai && <span className="muted small" title="Set ANTHROPIC_API_KEY to enable">AI off</span>}
-        <button className="primary" onClick={() => fileInput.current?.click()}>Upload</button>
+        <span className={ui.spacer} />
+        {status && !status.ai && <span className={cx(ui.muted, ui.small)} title="Set ANTHROPIC_API_KEY to enable">AI off</span>}
+        <button className={ui.primary} onClick={() => fileInput.current?.click()}>Upload</button>
         <input
           ref={fileInput}
           type="file"
@@ -82,7 +88,7 @@ function Shell() {
           onChange={(e) => { void upload([...(e.target.files ?? [])]); e.target.value = ""; }}
         />
       </header>
-      <main>
+      <main className={styles.main}>
         <Routes>
           <Route path="/" element={<InboxPage />} />
           <Route path="/inbox/:id" element={<InboxPage />} />
@@ -94,7 +100,7 @@ function Shell() {
           <Route path="/components" element={<ComponentsPage />} />
         </Routes>
       </main>
-      {dragging && <div className="drop-overlay">Drop files to add them to the inbox</div>}
+      {dragging && <div className={styles.dropOverlay}>Drop files to add them to the inbox</div>}
     </div>
   );
 }

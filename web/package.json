@@ -4,8 +4,8 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc -p . --noEmit && vite build",
-    "typecheck": "tsc -p . --noEmit"
+    "build": "tsc -p . --noEmit && node scripts/check-css-modules.mjs && vite build",
+    "typecheck": "tsc -p . --noEmit && node scripts/check-css-modules.mjs"
   },
   "dependencies": {
     "react": "^19.3.1",

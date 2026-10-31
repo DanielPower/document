@@ -1,0 +1,10 @@
+.page { flex: 1; display: grid; grid-template-columns: minmax(0, 1fr) minmax(400px, 560px); height: calc(100vh - 49px); }
+.left { display: flex; flex-direction: column; min-width: 0; }
+.right { border-left: 1px solid var(--border); background: var(--panel); padding: 12px 16px; overflow-y: auto; display: flex; flex-direction: column; gap: 10px; }
+.tabs { display: flex; gap: 4px; padding: 6px 8px; border-bottom: 1px solid var(--border); background: var(--panel); align-items: center; }
+.tabs button { border: none; background: none; }
+.tabs .tabOn { font-weight: 600; background: var(--bg); }
+.tabs a { margin-left: 10px; font-size: 12px; }
+@media (max-width: 1000px) {
+  .page { grid-template-columns: 1fr; height: auto; }
+}

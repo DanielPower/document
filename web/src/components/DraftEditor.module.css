@@ -1,0 +1,19 @@
+.editor { display: flex; flex-direction: column; gap: 12px; }
+.componentList { display: flex; flex-direction: column; gap: 8px; }
+.componentCard { border: 1px solid var(--border); border-left: 4px solid; border-radius: 6px; padding: 8px 10px; background: var(--panel); }
+.componentCardHead { display: flex; align-items: center; gap: 6px; }
+.componentName { font-weight: 600; flex: 1; }
+.fieldGrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; margin-top: 6px; }
+.field input, .field select { width: 100%; }
+.fieldWide { grid-column: 1 / -1; }
+.req { color: var(--danger); margin-left: 2px; }
+.withSuffix { display: flex; align-items: center; gap: 4px; color: var(--text); font-size: 14px; }
+.withSuffix input { flex: 1; min-width: 0; }
+.suffix { font-size: 12px; color: var(--muted); }
+.addComponent { align-self: flex-start; color: var(--accent); }
+.proposed { border: 1px dashed #16a34a; border-radius: var(--radius); padding: 10px; display: flex; flex-direction: column; gap: 8px; }
+.proposedItem { display: flex; flex-direction: column; gap: 8px; align-items: flex-start; padding-bottom: 8px; border-bottom: 1px solid var(--border); }
+.proposedItem:last-child { border-bottom: none; }
+.proposedItem > * { width: 100%; }
+.proposedItem > button { width: auto; }
+.newObjectLink { align-self: flex-start; }

@@ -1,7 +1,10 @@
 import { useState } from "react";
 import { api } from "../api";
 import { cleanInput, ComponentDefEditor, emptyComponent, toInput } from "../components/ComponentDefEditor";
+import { cx } from "../cx";
 import { useAppData } from "../data";
+import ui from "../ui.module.css";
+import styles from "./Components.module.css";
 import type { ComponentInput } from "../types";
 
 export function ComponentsPage() {
@@ -49,18 +52,18 @@ export function ComponentsPage() {
   };
 
   return (
-    <div className="page components-page">
-      <div className="page-head">
+    <div className={ui.page}>
+      <div className={ui.pageHead}>
         <h2>Components</h2>
-        <p className="muted">
+        <p className={ui.muted}>
           Reusable groups of fields. Attach any combination to documents and objects. A component with no fields works as a tag.
         </p>
       </div>
-      <div className="components-layout">
-        <div className="list">
-          <button className="primary" onClick={() => setEditing({ id: null, value: emptyComponent() })}>New component</button>
+      <div className={styles.layout}>
+        <div className={ui.list}>
+          <button className={ui.primary} onClick={() => setEditing({ id: null, value: emptyComponent() })}>New component</button>
           {status?.ai && (
-            <div className="generate">
+            <div className={styles.generate}>
               <textarea
                 rows={2}
                 value={prompt}
@@ -71,29 +74,29 @@ export function ComponentsPage() {
             </div>
           )}
           {catalog.map((c) => (
-            <button key={c.id} className={`list-item ${editing?.id === c.id ? "active" : ""}`} onClick={() => setEditing({ id: c.id, value: toInput(c) })}>
-              <span className="dot" style={{ background: c.color }} />
-              <div className="grow">
-                <div className="title">{c.name} <span className="muted mono small">{c.key}</span></div>
-                <div className="muted small">{c.fields.length ? c.fields.map((f) => f.label).join(", ") : "tag (no fields)"}</div>
+            <button key={c.id} className={cx(ui.listItem, editing?.id === c.id && ui.listItemActive)} onClick={() => setEditing({ id: c.id, value: toInput(c) })}>
+              <span className={ui.dot} style={{ background: c.color }} />
+              <div className={ui.grow}>
+                <div className={ui.listTitle}>{c.name} <span className={cx(ui.muted, ui.mono, ui.small)}>{c.key}</span></div>
+                <div className={cx(ui.muted, ui.small)}>{c.fields.length ? c.fields.map((f) => f.label).join(", ") : "tag (no fields)"}</div>
               </div>
-              <span className="muted small">{c.usage ?? 0} use{c.usage === 1 ? "" : "s"}</span>
+              <span className={cx(ui.muted, ui.small)}>{c.usage ?? 0} use{c.usage === 1 ? "" : "s"}</span>
             </button>
           ))}
         </div>
         {editing && (
-          <div className="panel">
+          <div className={styles.panel}>
             <h3>{editing.id ? `Edit ${editing.value.name}` : "New component"}</h3>
-            {editing.notes && <div className="ai-note"><p>{editing.notes}</p></div>}
+            {editing.notes && <div className={ui.aiNote}><p>{editing.notes}</p></div>}
             <ComponentDefEditor value={editing.value} onChange={(value) => setEditing({ ...editing, value })} catalog={catalog} autoKey={!editing.id} />
             {editing.id && (
-              <p className="muted small">Removing a field deletes its stored values. Changing a field's type clears its values.</p>
+              <p className={cx(ui.muted, ui.small)}>Removing a field deletes its stored values. Changing a field's type clears its values.</p>
             )}
-            <div className="actions">
-              <button className="primary" disabled={busy} onClick={save}>Save</button>
+            <div className={ui.actions}>
+              <button className={ui.primary} disabled={busy} onClick={save}>Save</button>
               <button onClick={() => setEditing(null)}>Cancel</button>
-              <span className="spacer" />
-              {editing.id && <button className="danger" disabled={busy} onClick={remove}>Delete</button>}
+              <span className={ui.spacer} />
+              {editing.id && <button className={ui.danger} disabled={busy} onClick={remove}>Delete</button>}
             </div>
           </div>
         )}

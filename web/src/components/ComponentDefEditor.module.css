@@ -1,0 +1,6 @@
+.editor { display: flex; flex-direction: column; gap: 8px; }
+.fieldsHead { margin-top: 6px; }
+.fieldRow { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+.keyInput { width: 130px; }
+.currencyInput { width: 64px; }
+.addField { align-self: flex-start; }

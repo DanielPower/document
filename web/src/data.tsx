@@ -1,5 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from "react";
 import { api, type Status } from "./api";
+import { cx } from "./cx";
+import styles from "./data.module.css";
 import type { ComponentDef, ObjectSummary } from "./types";
 
 interface AppData {
@@ -41,9 +43,9 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
   return (
     <Ctx.Provider value={{ catalog, objects, status, refresh, toast }}>
       {children}
-      <div className="toasts">
+      <div className={styles.toasts}>
         {toasts.map((t) => (
-          <div key={t.id} className={`toast ${t.kind}`}>{t.msg}</div>
+          <div key={t.id} className={cx(styles.toast, t.kind === "error" && styles.toastError)}>{t.msg}</div>
         ))}
       </div>
     </Ctx.Provider>

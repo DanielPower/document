@@ -1,7 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { api, thumbUrl } from "../api";
+import { cx } from "../cx";
 import { useAppData } from "../data";
+import ui from "../ui.module.css";
+import styles from "./Documents.module.css";
 import type { AggregateResult, AggregateSpec, ComponentDef, DocumentSummary, ObjectSummary } from "../types";
 
 const OPS_BY_TYPE: Record<string, Array<[string, string]>> = {
@@ -119,8 +122,8 @@ export function DocumentsPage() {
   const hasFilters = !!(q || components.length || where.length || ref || from || to || agg);
 
   return (
-    <div className="page documents">
-      <form className="searchbar" onSubmit={(e) => { e.preventDefault(); update((p) => (text ? p.set("q", text) : p.delete("q"))); }}>
+    <div className={ui.page}>
+      <form className={styles.searchbar} onSubmit={(e) => { e.preventDefault(); update((p) => (text ? p.set("q", text) : p.delete("q"))); }}>
         <input
           value={text}
           onChange={(e) => setText(e.target.value)}
@@ -138,7 +141,7 @@ export function DocumentsPage() {
           <option value="added">Recently added</option>
           <option value="title">Title</option>
         </select>
-        <button className="primary">Search</button>
+        <button className={ui.primary}>Search</button>
         {appStatus?.ai && (
           <button type="button" disabled={interpreting || !text.trim()} onClick={interpret} title="Let AI turn your question into filters">
             {interpreting ? "Thinking…" : "Ask AI"}
@@ -147,24 +150,24 @@ export function DocumentsPage() {
       </form>
 
       {explanation && (
-        <div className="ai-note">
-          <div className="ai-note-head">AI interpreted your question as</div>
+        <div className={ui.aiNote}>
+          <div className={ui.aiNoteHead}>AI interpreted your question as</div>
           <p>{explanation}</p>
-          {warnings.length > 0 && <p className="small muted">{warnings.join(" ")}</p>}
-          <p className="small muted">The filters below are what's actually applied; change any of them to refine.</p>
+          {warnings.length > 0 && <p className={cx(ui.small, ui.muted)}>{warnings.join(" ")}</p>}
+          <p className={cx(ui.small, ui.muted)}>The filters below are what's actually applied; change any of them to refine.</p>
         </div>
       )}
 
       {agg && aggResult && <AggregatePanel result={aggResult} onRemove={() => update((p) => p.delete("agg"), true)} />}
 
-      <div className="filters">
-        <span className="muted small">Has:</span>
+      <div className={styles.filters}>
+        <span className={cx(ui.muted, ui.small)}>Has:</span>
         {catalog.map((c) => {
           const on = components.includes(c.key);
           return (
             <button
               key={c.key}
-              className={`chip ${on ? "on" : ""}`}
+              className={cx(styles.chip, on && styles.chipOn)}
               style={on ? { background: c.color, borderColor: c.color } : { borderColor: c.color }}
               onClick={() => update((p) => {
                 p.delete("c");
@@ -179,13 +182,13 @@ export function DocumentsPage() {
           <option value="">Linked to any object</option>
           {objects.map((o) => <option key={o.id} value={o.id}>Linked to {o.title}</option>)}
         </select>
-        <label className="inline small muted">
+        <label className={cx(ui.inline, ui.small, ui.muted)}>
           From <input type="date" value={from} onChange={(e) => update((p) => (e.target.value ? p.set("from", e.target.value) : p.delete("from")))} />
         </label>
-        <label className="inline small muted">
+        <label className={cx(ui.inline, ui.small, ui.muted)}>
           to <input type="date" value={to} onChange={(e) => update((p) => (e.target.value ? p.set("to", e.target.value) : p.delete("to")))} />
         </label>
-        {hasFilters && <button className="link small" onClick={() => { setText(""); setParams(new URLSearchParams()); }}>Clear all</button>}
+        {hasFilters && <button className={cx(ui.link, ui.small)} onClick={() => { setText(""); setParams(new URLSearchParams()); }}>Clear all</button>}
       </div>
 
       <FieldFilters
@@ -195,30 +198,30 @@ export function DocumentsPage() {
         onChange={(w) => update((p) => { p.delete("w"); w.forEach((x) => p.append("w", x)); })}
       />
 
-      <p className="muted small">
+      <p className={cx(ui.muted, ui.small)}>
         {loading ? "Searching…" : `${total} document${total === 1 ? "" : "s"}`}
         {q && appStatus?.semantic.available && (
-          <label className="inline" style={{ display: "inline-flex", marginLeft: 12 }} title="Also find documents that match by meaning, not just by words">
+          <label className={cx(ui.inline, styles.meaningToggle)} title="Also find documents that match by meaning, not just by words">
             <input type="checkbox" checked={semantic} onChange={(e) => update((p) => (e.target.checked ? p.delete("sem") : p.set("sem", "0")), true)} />
             match by meaning{q && semantic && !usedSemantic && !loading ? " (unavailable right now)" : ""}
           </label>
         )}
       </p>
-      <div className="grid">
+      <div className={styles.grid}>
         {items.map((d) => (
-          <Link key={d.id} to={`/documents/${d.id}`} className="card">
-            {d.hasThumb ? <img src={thumbUrl(d.id)} alt="" loading="lazy" /> : <div className="thumb-ph big">{d.mimeType.split("/")[1]}</div>}
-            <div className="card-body">
-              <div className="title">{d.title}</div>
-              <div className="muted small">{d.documentDate ?? "no date"}</div>
-              <div className="badges">
+          <Link key={d.id} to={`/documents/${d.id}`} className={styles.card}>
+            {d.hasThumb ? <img className={styles.cardThumb} src={thumbUrl(d.id)} alt="" loading="lazy" /> : <div className={cx(ui.thumbPlaceholder, ui.thumbPlaceholderLarge)}>{d.mimeType.split("/")[1]}</div>}
+            <div className={styles.cardBody}>
+              <div className={styles.cardTitle}>{d.title}</div>
+              <div className={cx(ui.muted, ui.small)}>{d.documentDate ?? "no date"}</div>
+              <div className={ui.badges}>
                 {d.components.map((k, i) => {
                   const c = catalog.find((x) => x.key === k);
-                  return <span key={i} className="badge" style={{ background: c?.color }}>{c?.name ?? k}</span>;
+                  return <span key={i} className={ui.badge} style={{ background: c?.color }}>{c?.name ?? k}</span>;
                 })}
               </div>
-              {d.match === "meaning" && <div className="match-note small">Similar meaning; the words don't appear</div>}
-              {d.snippet && <div className="snippet" dangerouslySetInnerHTML={{ __html: sanitizeSnippet(d.snippet) }} />}
+              {d.match === "meaning" && <div className={cx(styles.matchNote, ui.small)}>Similar meaning; the words don't appear</div>}
+              {d.snippet && <div className={styles.snippet} dangerouslySetInnerHTML={{ __html: sanitizeSnippet(d.snippet) }} />}
             </div>
           </Link>
         ))}
@@ -233,14 +236,14 @@ function AggregatePanel({ result, onRemove }: { result: AggregateResult; onRemov
     v === null ? "—" : `${v.toLocaleString(undefined, { minimumFractionDigits: result.unit ? 2 : 0, maximumFractionDigits: 2 })}${result.unit ? ` ${result.unit}` : ""}`;
   const groupLabel = { none: "", year: "Year", month: "Month", object: "Linked to" }[result.groupBy];
   return (
-    <div className="aggregate">
-      <div className="aggregate-head">
+    <div className={styles.aggregate}>
+      <div className={styles.aggregateHead}>
         <strong>{result.label}</strong>
-        <button className="icon" title="Remove total" onClick={onRemove}>✕</button>
+        <button className={ui.icon} title="Remove total" onClick={onRemove}>✕</button>
       </div>
       {result.groupBy === "none" ? (
-        <div className="aggregate-value">
-          {fmt(result.rows[0]?.value ?? 0)} <span className="muted small">over {result.rows[0]?.documents ?? 0} documents</span>
+        <div className={styles.aggregateValue}>
+          {fmt(result.rows[0]?.value ?? 0)} <span className={cx(ui.muted, ui.small)}>over {result.rows[0]?.documents ?? 0} documents</span>
         </div>
       ) : (
         <table>
@@ -276,10 +279,10 @@ function FieldFilters(props: { where: string[]; onChange: (w: string[]) => void;
     return `${x ? `${x.c.name} › ${x.f.label}` : `${m[1]}.${m[2]}`} ${opLabel} ${v ?? ""}`;
   };
   return (
-    <div className="filters">
+    <div className={styles.filters}>
       {props.where.map((w, i) => (
-        <span key={i} className="chip on dark">
-          {describe(w)} <button className="icon" onClick={() => props.onChange(props.where.filter((_, j) => j !== i))}>✕</button>
+        <span key={i} className={cx(styles.chip, styles.chipFilter)}>
+          {describe(w)} <button className={ui.icon} onClick={() => props.onChange(props.where.filter((_, j) => j !== i))}>✕</button>
         </span>
       ))}
       <select value={path} onChange={(e) => { setPath(e.target.value); setOp(""); setVal(""); }}>
@@ -313,7 +316,7 @@ function FieldFilters(props: { where: string[]; onChange: (w: string[]) => void;
             )
           )}
           <button
-            className="small"
+            className={ui.compact}
             onClick={() => {
               const o = op || ops[0][0];
               props.onChange([...props.where, ["set", "empty"].includes(o) ? `${path}:${o}` : `${path}:${o}:${val}`]);
