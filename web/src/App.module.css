@@ -1,10 +1,11 @@
-.shell { min-height: 100vh; display: flex; flex-direction: column; }
-.topbar { display: flex; align-items: center; gap: 16px; padding: 8px 16px; background: var(--panel); border-bottom: 1px solid var(--border); position: sticky; top: 0; z-index: 5; }
+/* The shell is exactly the window's height; pages scroll inside .main (or in their own columns), never the window. */
+.shell { height: 100vh; display: flex; flex-direction: column; }
+.topbar { flex-shrink: 0; display: flex; align-items: center; gap: 16px; padding: 8px 16px; background: var(--panel); border-bottom: 1px solid var(--border); z-index: 5; }
 .brand { font-weight: 700; font-size: 16px; }
 .nav { display: flex; gap: 4px; }
 .navLink { color: var(--text); padding: 6px 10px; border-radius: 6px; }
 .navLinkActive { background: var(--bg); font-weight: 600; }
 .count { background: var(--accent); color: var(--accent-ink); border-radius: 10px; padding: 0 7px; font-size: 11px; margin-left: 4px; }
 .countProcessing { background: var(--muted); }
-.main { flex: 1; display: flex; flex-direction: column; min-height: 0; }
+.main { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; }
 .dropOverlay { position: fixed; inset: 0; background: color-mix(in srgb, var(--accent) 18%, transparent); border: 3px dashed var(--accent); display: grid; place-items: center; font-size: 22px; font-weight: 600; z-index: 20; pointer-events: none; }
