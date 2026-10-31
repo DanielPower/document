@@ -104,6 +104,7 @@ Guidelines:
    - Reuse existing objects. Before proposing a new object, check the object list carefully: the same thing is often named differently ("2022 Mazda3" and "2022 Mazda MAZDA3 Sport GT" are the same car if nothing contradicts it). Fields marked identifier (VIN, plate, account or policy number) decide it: the same identifier value means the same object. Matching make, model and year with no conflicting identifier usually means the same object too; an owner rarely has two of the same.
    - When the document reveals details an existing object lacks (a licence plate, a policy number, an address), add them with existing_object_updates instead of creating a new object. Only include fields that are new or wrong.
    - Propose new_objects only for things clearly not in the list, with components describing them, and reference them as new:<temp_id>. Don't create objects for vendors or one-off counterparties unless they are something the owner would want to track.
+   - Link each object once. If a component you attach already has a ref field pointing at the object (a vehicle registration's vehicle, a policy's insured property), that is the link: don't also attach a link-only component such as Related asset for the same object. Use a link-only component only for an object nothing else on the document points at.
 4. Title: short and specific, in the form a person would want to see in a list, e.g. "Canadian Tire - brake service" or "Hydro bill - March 2025". Don't put the date in the title.
 
 Value formats (all values are written as text):
@@ -388,12 +389,47 @@ export function toDraft(a: Analysis, catalog: Map<string, ComponentDef>, objectI
   const draft: Draft = {
     title: a.title.trim(),
     documentDate: a.document_date ? parseDate(a.document_date) : null,
-    components: convert(a.components, "the document"),
+    components: dropRedundantLinks(convert(a.components, "the document"), allDefs, warnings),
     newComponents,
     newObjects,
     objectUpdates,
   };
   return { draft, warnings };
+}
+
+/**
+ * Drops link-only components (every field a ref, like Related asset) whose
+ * targets another component on the same entity already points at. Every
+ * query, backlink and count goes through any ref field, so the extra link
+ * adds nothing.
+ */
+export function dropRedundantLinks(
+  comps: DraftComponent[],
+  defs: Map<string, Pick<ComponentDef, "name" | "fields">>,
+  warnings: string[],
+): DraftComponent[] {
+  const isLinkOnly = (c: DraftComponent) => {
+    const fields = defs.get(c.component)?.fields ?? [];
+    return fields.length > 0 && fields.every((f) => f.type === "ref");
+  };
+  const refsOf = (c: DraftComponent) => {
+    const fields = defs.get(c.component)?.fields ?? [];
+    return fields.filter((f) => f.type === "ref").map((f) => c.values[f.key]).filter((v): v is string => typeof v === "string" && v !== "");
+  };
+  const linkedElsewhere = new Set(comps.filter((c) => !isLinkOnly(c)).flatMap(refsOf));
+  const kept: DraftComponent[] = [];
+  for (const c of comps) {
+    const refs = refsOf(c);
+    const redundant = isLinkOnly(c) && refs.length > 0 && refs.every((r) => linkedElsewhere.has(r));
+    if (redundant) {
+      warnings.push(`Left out ${defs.get(c.component)!.name}: another component already links to the same object.`);
+      continue;
+    }
+    // Two link-only components pointing at the same object: keep the first.
+    if (isLinkOnly(c)) for (const r of refs) linkedElsewhere.add(r);
+    kept.push(c);
+  }
+  return kept;
 }
 
 function newComponentInput(nc: z.infer<typeof NewComponentSchema>): ComponentInput {
