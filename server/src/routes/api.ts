@@ -47,6 +47,39 @@ export async function apiRoutes(app: FastifyInstance) {
     return { results };
   });
 
+  /**
+   * Target of the PWA's share_target (web/public/manifest.webmanifest): Android's share sheet
+   * posts the shared files here as a form submission, so answer with a redirect into the app.
+   * The web UI shows `notice` and `error` as toasts.
+   */
+  app.post("/share", async (req, reply) => {
+    const added: string[] = [];
+    const dupes: string[] = [];
+    const errors: string[] = [];
+    try {
+      for await (const part of req.files()) {
+        try {
+          const r = await ingestBuffer(await part.toBuffer(), part.filename || "Shared file");
+          (r.duplicate ? dupes : added).push(r.id);
+        } catch (err) {
+          errors.push(`${part.filename}: ${(err as Error).message}`);
+        }
+      }
+    } catch (err) {
+      errors.push((err as Error).message);
+    }
+    const notice = [
+      added.length > 1 ? `Added ${added.length} files; processing…` : added.length ? "Added; processing…" : "",
+      dupes.length ? `${dupes.length === 1 ? "That file was" : `${dupes.length} files were`} already in the archive.` : "",
+      !added.length && !dupes.length && !errors.length ? "Nothing to add: share a PDF, image or text file." : "",
+    ].filter(Boolean).join("\n");
+    const query = new URLSearchParams();
+    if (notice) query.set("notice", notice);
+    if (errors.length) query.set("error", errors.join("\n"));
+    const target = added.length === 1 && !dupes.length ? `/inbox/${added[0]}` : !added.length && dupes.length === 1 ? `/documents/${dupes[0]}` : "/";
+    return reply.redirect(`${target}?${query}`, 303);
+  });
+
   const searchParams = (q: Record<string, unknown>): SearchParams => ({
     q: q.q as string | undefined,
     status: asArray(q.status) as DocumentStatus[] | undefined,

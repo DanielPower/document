@@ -20,3 +20,14 @@
 .aggregate table { border-collapse: collapse; margin-top: 6px; width: 100%; }
 .aggregate th, .aggregate td { text-align: left; padding: 4px 12px 4px 0; border-bottom: 1px solid var(--border); }
 .aggregate td:nth-child(2) { font-variant-numeric: tabular-nums; }
+.filterToggle { display: none; }
+@media (max-width: 700px) {
+  .searchbar { flex-wrap: wrap; }
+  .searchbar input { flex-basis: 100%; }
+  .searchbar select { flex: 1; min-width: 0; }
+  .filterToggle { display: block; margin-bottom: 8px; }
+  .filterPanel:not(.filterPanelOpen) { display: none; }
+  .grid { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; }
+  .cardThumb { height: 140px; }
+  .meaningToggle { margin-left: 0; }
+}

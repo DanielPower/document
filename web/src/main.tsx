@@ -11,3 +11,10 @@ createRoot(document.getElementById("root")!).render(
     </BrowserRouter>
   </StrictMode>,
 );
+
+// Lets Android install Docket as an app and list it in the share sheet (see public/manifest.webmanifest).
+if (import.meta.env.PROD && "serviceWorker" in navigator) {
+  window.addEventListener("load", () => {
+    navigator.serviceWorker.register("/sw.js").catch((e) => console.warn("Service worker not registered:", e));
+  });
+}

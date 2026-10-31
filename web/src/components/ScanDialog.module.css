@@ -1,0 +1,17 @@
+.backdrop { position: fixed; inset: 0; z-index: 40; background: rgb(0 0 0 / 0.5); display: grid; place-items: center; padding: 16px; }
+.dialog { background: var(--panel); border-radius: var(--radius); width: min(720px, 100%); max-height: 100%; display: flex; flex-direction: column; box-shadow: 0 8px 32px rgb(0 0 0 / 0.3); }
+.head, .foot { display: flex; align-items: center; gap: 8px; padding: 10px 14px; }
+.head { border-bottom: 1px solid var(--border); }
+.foot { border-top: 1px solid var(--border); }
+.pages { flex: 1; min-height: 0; overflow-y: auto; padding: 12px 14px; display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 12px; align-items: start; }
+.page { margin: 0; border: 1px solid var(--border); border-radius: 6px; overflow: hidden; background: var(--bg); }
+.page img { display: block; width: 100%; aspect-ratio: 3 / 4; object-fit: contain; background: #525659; }
+.pageBar { display: flex; align-items: center; justify-content: space-between; padding: 2px 4px; }
+.addPage { aspect-ratio: 3 / 4; border: 2px dashed var(--border); background: none; color: var(--accent); font-weight: 600; }
+/* Phones: a full-screen sheet. */
+@media (max-width: 700px) {
+  .backdrop { padding: 0; place-items: stretch; }
+  .dialog { width: 100%; height: 100%; border-radius: 0; }
+  .foot { padding-bottom: max(10px, env(safe-area-inset-bottom)); }
+  .pages { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}

@@ -11,9 +11,26 @@
 .preview { min-width: 0; min-height: 0; display: flex; }
 .previewEmpty { align-items: center; justify-content: center; color: var(--muted); }
 .editor { border-left: 1px solid var(--border); overflow-y: auto; padding: 12px 16px; background: var(--panel); }
+/* Only shown on phones, where the list and the document are separate screens. */
+.back { display: none; }
 @media (max-width: 1000px) {
   .page { flex: none; grid-template-columns: 1fr; grid-template-rows: none; }
   .list { max-height: 30vh; }
+  /* The preview scrolls inside a fixed-height box so the editor is reachable below it. */
+  .preview { height: 65dvh; }
+  .editor { border-left: none; border-top: 1px solid var(--border); }
+}
+/* Phones: "/" is the list, "/inbox/:id" is the document. */
+@media (max-width: 700px) {
+  .list { max-height: none; border-right: none; }
+  .item { padding: 10px 12px; }
+  .pageOpen .list { display: none; }
+  /* On the list screen nothing is open, so don't mark the auto-selected item. */
+  .page:not(.pageOpen) .itemActive { background: none; box-shadow: none; }
+  .page:not(.pageOpen) > :not(.list) { display: none; }
+  .back { display: flex; align-items: center; gap: 10px; padding: 4px 12px; background: var(--panel); border-bottom: 1px solid var(--border); min-width: 0; }
+  .back > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .preview { height: 60dvh; }
 }
 .revise { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; }
 .reviseActions { display: flex; align-items: center; justify-content: space-between; gap: 8px; }

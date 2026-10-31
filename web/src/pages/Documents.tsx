@@ -46,6 +46,8 @@ export function DocumentsPage() {
   const [warnings, setWarnings] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
   const [interpreting, setInterpreting] = useState(false);
+  /** Phones only: the filters fold away behind a button. */
+  const [showFilters, setShowFilters] = useState(false);
 
   useEffect(() => setText(q), [q]);
 
@@ -119,6 +121,7 @@ export function DocumentsPage() {
     }
   };
 
+  const filterCount = components.length + where.length + (ref ? 1 : 0) + (from || to ? 1 : 0);
   const hasFilters = !!(q || components.length || where.length || ref || from || to || agg);
 
   return (
@@ -128,7 +131,7 @@ export function DocumentsPage() {
           value={text}
           onChange={(e) => setText(e.target.value)}
           placeholder={appStatus?.ai ? 'Search, or ask: "unpaid house bills this year"' : 'Search text, e.g. brake "kingsway auto" -oil'}
-          autoFocus
+          autoFocus={!matchMedia("(max-width: 700px)").matches}
         />
         <select value={status} onChange={(e) => update((p) => p.set("status", e.target.value), true)}>
           <option value="filed">Filed</option>
@@ -158,8 +161,13 @@ export function DocumentsPage() {
         </div>
       )}
 
+      <button className={styles.filterToggle} onClick={() => setShowFilters((v) => !v)} aria-expanded={showFilters}>
+        {showFilters ? "Hide filters" : `Filters${filterCount ? ` (${filterCount})` : ""}`}
+      </button>
+
       {agg && aggResult && <AggregatePanel result={aggResult} onRemove={() => update((p) => p.delete("agg"), true)} />}
 
+      <div className={cx(styles.filterPanel, showFilters && styles.filterPanelOpen)}>
       <div className={styles.filters}>
         <span className={cx(ui.muted, ui.small)}>Has:</span>
         {catalog.map((c) => {
@@ -197,6 +205,7 @@ export function DocumentsPage() {
         where={where}
         onChange={(w) => update((p) => { p.delete("w"); w.forEach((x) => p.append("w", x)); })}
       />
+      </div>
 
       <p className={cx(ui.muted, ui.small)}>
         {loading ? "Searching…" : `${total} document${total === 1 ? "" : "s"}`}

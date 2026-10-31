@@ -127,7 +127,7 @@ export function InboxPage() {
   };
 
   return (
-    <div className={styles.page}>
+    <div className={cx(styles.page, routeId && styles.pageOpen)}>
       <aside className={styles.list}>
         {items.length === 0 && <p className={cx(ui.muted, ui.pad)}>Inbox is empty. Drop files anywhere to add documents.</p>}
         {items.map((i) => (
@@ -143,6 +143,10 @@ export function InboxPage() {
 
       {doc && draft ? (
         <>
+          <div className={styles.back}>
+            <button className={ui.link} onClick={() => navigate("/")}>‹ Inbox</button>
+            <span className={cx(ui.small, ui.muted)}>{doc.originalFilename}</span>
+          </div>
           <section className={styles.preview}><Preview doc={doc} /></section>
           <section className={styles.editor}>
             {ACTIVE.includes(doc.status) ? (
