@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { api, thumbUrl } from "../api";
 import { DraftEditor } from "../components/DraftEditor";
@@ -10,6 +10,8 @@ import styles from "./Inbox.module.css";
 import type { DocumentDetail, DocumentSummary, Draft } from "../types";
 
 const ACTIVE = ["queued", "ocr", "analyzing"];
+/** Documents that can be filed: reviewed proposals, and failed ones filed by hand. */
+const FILEABLE = ["inbox", "failed"];
 
 /** Explicit mapping: a status value is never used as a class name itself. */
 const STATUS_CLASS: Record<string, string | undefined> = {
@@ -20,16 +22,45 @@ const STATUS_CLASS: Record<string, string | undefined> = {
   analyzing: ui.pulse,
 };
 
+const same = (a: Draft, b: Draft) => JSON.stringify(a) === JSON.stringify(b);
+
+/** Typing in a field shouldn't trigger list shortcuts. */
+const isTyping = (t: EventTarget | null) =>
+  t instanceof HTMLElement && (t.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(t.tagName));
+
 export function InboxPage() {
   const { id: routeId } = useParams();
   const navigate = useNavigate();
   const { catalog, objects, refresh, toast, status } = useAppData();
   const [items, setItems] = useState<DocumentSummary[]>([]);
   const [doc, setDoc] = useState<DocumentDetail | null>(null);
-  const [draft, setDraft] = useState<Draft | null>(null);
+  const [draft, setDraftState] = useState<Draft | null>(null);
   const [busy, setBusy] = useState(false);
   const [feedback, setFeedback] = useState("");
   const [revising, setRevising] = useState(false);
+  /**
+   * Edits in progress, by document id. Switching documents keeps them, so
+   * looking at another document never throws work away.
+   */
+  const edits = useRef(new Map<string, Draft>());
+  const [, setEditCount] = useState(0);
+
+  const baseline = (d: DocumentDetail): Draft => d.proposal?.draft ?? d.current;
+
+  const setDraft = (next: Draft) => {
+    setDraftState(next);
+    if (!doc) return;
+    if (same(next, baseline(doc))) edits.current.delete(doc.id);
+    else edits.current.set(doc.id, next);
+    setEditCount(edits.current.size);
+  };
+
+  const forget = (id: string) => {
+    edits.current.delete(id);
+    setEditCount(edits.current.size);
+  };
+
+  const dirty = !!doc && edits.current.has(doc.id);
 
   const loadList = useCallback(async () => {
     const res = await api.searchDocuments({ status: ["inbox", "failed", ...ACTIVE], sort: "added", limit: 200 });
@@ -53,24 +84,37 @@ export function InboxPage() {
     return () => { stop = true; clearTimeout(timer); };
   }, [loadList, toast]);
 
+  // Closing the tab with unfiled edits asks first.
+  useEffect(() => {
+    const warn = (e: BeforeUnloadEvent) => { if (edits.current.size) e.preventDefault(); };
+    window.addEventListener("beforeunload", warn);
+    return () => window.removeEventListener("beforeunload", warn);
+  }, []);
+
   const selected = items.find((i) => i.id === routeId) ?? (routeId ? undefined : items.find((i) => i.status === "inbox"));
   const selectedId = selected?.id ?? routeId;
   const selectedStatus = selected?.status;
 
   // (Re)load the detail when the selection changes or its processing finishes.
   useEffect(() => {
-    if (!selectedId) { setDoc(null); setDraft(null); return; }
+    if (!selectedId) { setDoc(null); setDraftState(null); return; }
     let cancelled = false;
     api.getDocument(selectedId).then((d) => {
       if (cancelled) return;
       setDoc(d);
-      setDraft(structuredClone(d.proposal?.draft ?? d.current));
+      // Edits made earlier win over the stored proposal, unless processing replaced it.
+      const kept = ACTIVE.includes(d.status) ? undefined : edits.current.get(d.id);
+      if (!kept) edits.current.delete(d.id);
+      setDraftState(structuredClone(kept ?? baseline(d)));
     }).catch((e) => toast(e.message, "error"));
     return () => { cancelled = true; };
   }, [selectedId, selectedStatus, toast]);
 
   // A half-written suggestion belongs to the document it was written for.
   useEffect(() => setFeedback(""), [selectedId]);
+
+  /** Asks before an action that replaces the edits made to this document. */
+  const discardOk = (what: string) => !dirty || confirm(`${what} replaces the changes you made to this document. Continue?`);
 
   /** Sends the draft as currently edited plus the suggestion; the AI's revision replaces the draft. */
   const revise = async () => {
@@ -79,7 +123,8 @@ export function InboxPage() {
     try {
       const proposal = await api.revise(doc.id, draft, feedback.trim());
       setDoc({ ...doc, proposal, error: null });
-      setDraft(structuredClone(proposal.draft));
+      setDraftState(structuredClone(proposal.draft));
+      forget(doc.id);
       setFeedback("");
     } catch (e) {
       toast((e as Error).message, "error");
@@ -100,10 +145,20 @@ export function InboxPage() {
     }
   };
 
-  const next = () => {
-    const idx = items.findIndex((i) => i.id === selectedId);
-    const after = items.slice(idx + 1).concat(items.slice(0, idx)).find((i) => i.status === "inbox" && i.id !== selectedId);
-    navigate(after ? `/inbox/${after.id}` : "/");
+  const reviewable = items.filter((i) => FILEABLE.includes(i.status));
+
+  /** Moves through the reviewable documents; wraps around. */
+  const step = (dir: 1 | -1, skipSelf = false) => {
+    const list = skipSelf ? reviewable.filter((i) => i.id !== selectedId) : reviewable;
+    if (!list.length) return navigate("/");
+    const idx = reviewable.findIndex((i) => i.id === selectedId);
+    if (skipSelf) {
+      // The current one is going away: take the one that was after it.
+      const after = reviewable.slice(idx + 1).concat(reviewable.slice(0, Math.max(idx, 0))).find((i) => i.id !== selectedId);
+      return navigate(`/inbox/${(after ?? list[0]).id}`);
+    }
+    const next = reviewable[(idx + dir + reviewable.length) % reviewable.length];
+    navigate(`/inbox/${next.id}`);
   };
 
   const act = async (fn: () => Promise<unknown>, done?: string) => {
@@ -121,24 +176,84 @@ export function InboxPage() {
     }
   };
 
+  const canFile = !!doc && !!draft && FILEABLE.includes(doc.status) && !busy && !revising;
+
   const file = async () => {
-    if (!doc || !draft) return;
-    if (await act(() => api.saveDocument(doc.id, draft, true), "Filed")) next();
+    if (!doc || !draft || !canFile) return;
+    const id = doc.id;
+    if (await act(() => api.saveDocument(id, draft, true), "Filed")) {
+      forget(id);
+      step(1, true);
+    }
   };
+
+  const reanalyze = async (ocr: boolean) => {
+    if (!doc || !discardOk(ocr ? "Redoing OCR" : "Re-running AI")) return;
+    const id = doc.id;
+    if (await act(() => api.reanalyze(id, ocr), ocr ? "Re-running OCR and AI…" : "Re-running AI…")) forget(id);
+  };
+
+  const remove = async () => {
+    if (!doc || !confirm("Delete this document and its files?")) return;
+    const id = doc.id;
+    if (await act(() => api.deleteDocument(id), "Deleted")) {
+      forget(id);
+      step(1, true);
+    }
+  };
+
+  // Keyboard: J/K move through the inbox, Ctrl/⌘+Enter files.
+  const keys = useRef<(e: KeyboardEvent) => void>(() => {});
+  keys.current = (e) => {
+    if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
+      e.preventDefault();
+      void file();
+      return;
+    }
+    if (isTyping(e.target) || e.metaKey || e.ctrlKey || e.altKey) return;
+    if (e.key === "j") step(1);
+    else if (e.key === "k") step(-1);
+  };
+  useEffect(() => {
+    const h = (e: KeyboardEvent) => keys.current(e);
+    window.addEventListener("keydown", h);
+    return () => window.removeEventListener("keydown", h);
+  }, []);
+
+  const color = (key: string) => catalog.find((c) => c.key === key)?.color;
+  // Components proposed but not created yet aren't in the catalog: "insurance_policy" -> "Insurance policy".
+  const name = (key: string) => catalog.find((c) => c.key === key)?.name ?? key.charAt(0).toUpperCase() + key.slice(1).replace(/_/g, " ");
 
   return (
     <div className={cx(styles.page, routeId && styles.pageOpen)}>
       <aside className={styles.list}>
         {items.length === 0 && <p className={cx(ui.muted, ui.pad)}>Inbox is empty. Drop files anywhere to add documents.</p>}
-        {items.map((i) => (
-          <button key={i.id} className={cx(styles.item, i.id === selectedId && styles.itemActive)} onClick={() => navigate(`/inbox/${i.id}`)}>
-            {i.hasThumb ? <img className={styles.thumb} src={thumbUrl(i.id)} alt="" /> : <div className={ui.thumbPlaceholder}>{i.mimeType.split("/")[1]}</div>}
-            <div>
-              <div className={styles.title}>{i.title}</div>
-              <div className={cx(styles.status, STATUS_CLASS[i.status])}>{i.status === "queued" && i.error ? "Failed, retrying soon" : STATUS_LABEL[i.status]}</div>
-            </div>
-          </button>
-        ))}
+        {items.map((i) => {
+          const p = i.proposed;
+          return (
+            <button key={i.id} className={cx(styles.item, i.id === selectedId && styles.itemActive)} onClick={() => navigate(`/inbox/${i.id}`)}>
+              {i.hasThumb ? <img className={styles.thumb} src={thumbUrl(i.id)} alt="" /> : <div className={ui.thumbPlaceholder}>{fileKind(i.mimeType)}</div>}
+              <div className={styles.itemBody}>
+                <div className={styles.title}>{p?.title || i.title}</div>
+                {p && (
+                  <div className={cx(ui.small, ui.muted)}>
+                    {p.documentDate ?? "no date"}
+                    {p.title && p.title !== i.title && <> · {i.originalFilename}</>}
+                  </div>
+                )}
+                {!!p?.components.length && (
+                  <div className={cx(ui.badges, styles.itemBadges)}>
+                    {p.components.map((k, n) => <span key={n} className={ui.badge} style={{ background: color(k) }}>{name(k)}</span>)}
+                  </div>
+                )}
+                <div className={cx(styles.status, STATUS_CLASS[i.status])}>
+                  {i.status === "queued" && i.error ? "Failed, retrying soon" : STATUS_LABEL[i.status]}
+                  {edits.current.has(i.id) && <span className={styles.edited}> · edited</span>}
+                </div>
+              </div>
+            </button>
+          );
+        })}
       </aside>
 
       {doc && draft ? (
@@ -156,9 +271,26 @@ export function InboxPage() {
               </>
             ) : (
               <>
-                {doc.status === "failed" && <div className={cx(ui.alert, ui.error)}>Processing failed: {doc.error}</div>}
-                {doc.status === "inbox" && doc.error && <div className={cx(ui.alert, ui.warn)}>{doc.error}</div>}
-                {(doc.proposal || status?.ai) && (
+                {doc.status === "failed" && (
+                  <div className={cx(ui.alert, ui.error)}>
+                    <p className={styles.alertText}>Processing failed: {doc.error}</p>
+                    <p className={cx(styles.alertText, ui.small)}>You can still fill in the details and file it by hand, or try again.</p>
+                    <div className={styles.alertActions}>
+                      <button className={ui.compact} disabled={busy} onClick={() => reanalyze(true)}>Try again</button>
+                    </div>
+                  </div>
+                )}
+                {doc.status === "inbox" && doc.error && (
+                  <div className={cx(ui.alert, ui.warn)}>
+                    <p className={styles.alertText}>{doc.error}</p>
+                    {status?.ai && !doc.proposal && (
+                      <div className={styles.alertActions}>
+                        <button className={ui.compact} disabled={busy} onClick={() => reanalyze(false)}>Run AI now</button>
+                      </div>
+                    )}
+                  </div>
+                )}
+                {(doc.proposal || (status?.ai && doc.status === "inbox")) && (
                   <div className={ui.aiNote}>
                     {doc.proposal && (
                       <>
@@ -189,8 +321,8 @@ export function InboxPage() {
                           value={feedback}
                           disabled={revising}
                           onChange={(e) => setFeedback(e.target.value)}
-                          onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); void revise(); } }}
-                          placeholder={doc.proposal ? "Suggest a change, e.g. \u201cuse an amount and a billing frequency instead of an annual amount\u201d" : "Tell the AI how to file this document"}
+                          onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey && !e.metaKey && !e.ctrlKey) { e.preventDefault(); void revise(); } }}
+                          placeholder={doc.proposal ? "Suggest a change, e.g. “use an amount and a billing frequency instead of an annual amount”" : "Tell the AI how to file this document"}
                         />
                         <div className={styles.reviseActions}>
                           <span className={cx(ui.small, ui.muted)}>Your edits below are kept unless you ask to change them.</span>
@@ -201,23 +333,30 @@ export function InboxPage() {
                   </div>
                 )}
                 <fieldset className={styles.editorFieldset} disabled={revising}>
-                  <DraftEditor draft={draft} onChange={setDraft} catalog={catalog} objects={objects} showDate selfId={doc.id} onSameAs={sameAs} />
+                  <DraftEditor draft={draft} onChange={setDraft} catalog={catalog} objects={objects} showDate selfId={doc.id} onSameAs={sameAs} allowNewObjects />
                 </fieldset>
-                <div className={ui.actions}>
-                  <button className={ui.primary} disabled={busy || revising || doc.status !== "inbox"} onClick={file}>
+                <div className={styles.actionBar}>
+                  <button className={ui.primary} disabled={!canFile} onClick={file} title="Ctrl/⌘ + Enter">
                     {draft.newComponents.length || draft.newObjects.length ? "Create & file" : "File document"}
                   </button>
-                  <button disabled={busy} onClick={() => setDraft(structuredClone(doc.proposal?.draft ?? doc.current))}>Reset</button>
-                  <span className={ui.spacer} />
-                  <button disabled={busy} onClick={() => act(() => api.reanalyze(doc.id), "Re-running AI…")}>Re-run AI</button>
-                  <button disabled={busy} onClick={() => act(() => api.reanalyze(doc.id, true), "Re-running OCR and AI…")}>Redo OCR</button>
                   <button
-                    className={ui.danger}
-                    disabled={busy}
-                    onClick={async () => { if (confirm("Delete this document and its files?") && (await act(() => api.deleteDocument(doc.id), "Deleted"))) next(); }}
+                    disabled={busy || !dirty}
+                    title="Go back to the AI's proposal"
+                    onClick={() => { if (discardOk("Resetting")) { setDraftState(structuredClone(baseline(doc))); forget(doc.id); } }}
                   >
-                    Delete
+                    Reset
                   </button>
+                  {dirty && <span className={cx(ui.small, ui.muted)}>Edited</span>}
+                  <span className={ui.spacer} />
+                  <span className={cx(ui.small, ui.muted, styles.keysHint)}>J / K to move</span>
+                  <details className={styles.more}>
+                    <summary className={ui.button} aria-label="More actions">⋯</summary>
+                    <div className={styles.menu}>
+                      {status?.ai && <button disabled={busy} onClick={() => reanalyze(false)}>Re-run AI</button>}
+                      <button disabled={busy} onClick={() => reanalyze(true)}>Redo OCR</button>
+                      <button className={ui.danger} disabled={busy} onClick={remove}>Delete</button>
+                    </div>
+                  </details>
                 </div>
               </>
             )}
@@ -228,4 +367,10 @@ export function InboxPage() {
       )}
     </div>
   );
+}
+
+/** A short label for a file type: "PDF", "PNG", "TXT". */
+function fileKind(mime: string): string {
+  const sub = mime.split("/")[1] ?? "";
+  return { plain: "txt", markdown: "md", jpeg: "jpg" }[sub] ?? sub.slice(0, 4);
 }

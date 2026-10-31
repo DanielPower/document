@@ -127,6 +127,8 @@ export interface DocumentSummary {
   /** Why a text search matched: the words, the meaning (embeddings), or both. */
   match?: "text" | "meaning" | "both";
   error: string | null;
+  /** For inbox documents with an AI proposal: what the proposal would file it as. */
+  proposed?: { title: string; documentDate: string | null; components: string[] };
 }
 
 export interface DocumentDetail extends DocumentSummary {

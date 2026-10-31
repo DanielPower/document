@@ -1,0 +1,18 @@
+.picker { position: relative; color: var(--text); font-size: 14px; }
+.control { position: relative; }
+.control input { width: 100%; padding-right: 28px; }
+.clear { position: absolute; right: 2px; top: 50%; transform: translateY(-50%); }
+.list {
+  position: absolute; left: 0; right: 0; top: calc(100% + 2px); z-index: 6;
+  margin: 0; padding: 4px 0; list-style: none; max-height: 260px; overflow-y: auto;
+  background: var(--panel); border: 1px solid var(--border); border-radius: 6px;
+  box-shadow: 0 6px 20px rgb(0 0 0 / 0.15);
+  min-width: 220px;
+}
+.row { display: flex; flex-direction: column; padding: 6px 10px; cursor: pointer; }
+.rowActive { background: color-mix(in srgb, var(--accent) 12%, var(--panel)); }
+.rowTitle { font-weight: 500; }
+.detail { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tag { margin-left: 6px; }
+.create { color: var(--accent); }
+.empty { padding: 6px 10px; }

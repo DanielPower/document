@@ -1,9 +1,11 @@
-import { useMemo } from "react";
-import type { ComponentDef, ComponentInput, Draft, DraftComponent, DraftValue, FieldDef, ObjectSummary } from "../types";
+import { useEffect, useMemo, useState } from "react";
+import { api } from "../api";
+import type { ComponentDef, ComponentInput, Draft, DraftComponent, DraftObjectUpdate, DraftValue, FieldDef, ObjectSummary } from "../types";
 import { cx } from "../cx";
 import { migrateComponentValues } from "../migrateValues";
 import ui from "../ui.module.css";
 import { ComponentDefEditor } from "./ComponentDefEditor";
+import { ObjectPicker } from "./ObjectPicker";
 import styles from "./DraftEditor.module.css";
 
 type Def = Pick<ComponentDef, "key" | "name" | "color" | "description"> & { fields: Array<Omit<FieldDef, "id" | "position">>; isNew?: boolean };
@@ -16,11 +18,28 @@ function defsFor(catalog: ComponentDef[], draft: Draft): Map<string, Def> {
   return m;
 }
 
-/** Existing objects ordered by how many words their titles share with `title`. */
-function likelyMatches(title: string, objects: ObjectSummary[]): ObjectSummary[] {
-  const words = new Set(title.toLowerCase().match(/[a-z0-9]+/g) ?? []);
-  const score = (o: ObjectSummary) => (o.title.toLowerCase().match(/[a-z0-9]+/g) ?? []).filter((w) => words.has(w)).length;
-  return [...objects].sort((a, b) => score(b) - score(a) || a.title.localeCompare(b.title));
+const wordsOf = (s: string) => new Set(s.toLowerCase().match(/[\p{L}\p{N}]+/gu) ?? []);
+
+/**
+ * Existing objects that a proposed new one might be, best first. An object
+ * counts as a likely match when it carries one of the same components and
+ * shares at least two words (title or details) with the proposal, e.g. "Honda"
+ * and "Civic". The rest follow, those with a shared component first.
+ */
+export function rankMatches(o: Draft["newObjects"][number], objects: ObjectSummary[]): { likely: ObjectSummary[]; sameKind: ObjectSummary[]; other: ObjectSummary[] } {
+  const kinds = new Set(o.components.map((c) => c.component));
+  const values = o.components.flatMap((c) => Object.values(c.values)).filter((v) => typeof v === "string" || typeof v === "number");
+  const mine = wordsOf(`${o.title} ${values.join(" ")}`);
+  const score = (x: ObjectSummary) => [...wordsOf(`${x.title} ${x.summary}`)].filter((w) => mine.has(w)).length;
+  const scored = objects
+    .map((x) => ({ x, s: score(x), same: x.components.some((k) => kinds.has(k)) }))
+    .sort((a, b) => b.s - a.s || a.x.title.localeCompare(b.x.title));
+  const likely = scored.filter((r) => r.same && r.s >= 2).map((r) => r.x);
+  return {
+    likely,
+    sameKind: scored.filter((r) => r.same && !likely.includes(r.x)).map((r) => r.x),
+    other: scored.filter((r) => !r.same).map((r) => r.x),
+  };
 }
 
 let tempCounter = 0;
@@ -40,6 +59,8 @@ export function DraftEditor(props: {
   selfId?: string;
   /** The owner says a proposed new object is an existing one. */
   onSameAs?: (tempId: string, objectId: string) => void;
+  /** Offer to create a new object next to the document (intake only). */
+  allowNewObjects?: boolean;
 }) {
   const { draft, onChange, catalog } = props;
   const defs = useMemo(() => defsFor(catalog, draft), [catalog, draft]);
@@ -143,8 +164,20 @@ export function DraftEditor(props: {
         <section className={styles.proposed}>
           <h4>New objects</h4>
           <p className={cx(ui.muted, ui.small)}>Things this document refers to that don't exist yet. They'll be created when you save.</p>
-          {draft.newObjects.map((o, i) => (
+          {draft.newObjects.map((o, i) => {
+            const m = rankMatches(o, props.objects);
+            const best = m.likely[0];
+            return (
             <div className={styles.proposedItem} key={o.tempId}>
+              {props.onSameAs && best && (
+                <div className={styles.lookalike}>
+                  <div>
+                    <strong>Looks like “{best.title}”</strong>, which you already have.
+                    {best.summary && <div className={cx(ui.small, ui.muted)}>{best.summary}</div>}
+                  </div>
+                  <button className={cx(ui.compact, ui.primary)} onClick={() => props.onSameAs!(o.tempId, best.id)}>Use “{best.title}”</button>
+                </div>
+              )}
               <label>
                 Title
                 <input
@@ -157,9 +190,13 @@ export function DraftEditor(props: {
                   Already have it?
                   <select value="" onChange={(e) => e.target.value && props.onSameAs!(o.tempId, e.target.value)}>
                     <option value="">No, create “{o.title}”</option>
-                    {likelyMatches(o.title, props.objects).map((x) => (
-                      <option key={x.id} value={x.id}>Same as “{x.title}”</option>
-                    ))}
+                    {[["Likely", m.likely], ["Same kind", m.sameKind], ["Other objects", m.other]].map(([label, list]) =>
+                      (list as ObjectSummary[]).length ? (
+                        <optgroup key={label as string} label={label as string}>
+                          {(list as ObjectSummary[]).map((x) => <option key={x.id} value={x.id}>Same as “{x.title}”</option>)}
+                        </optgroup>
+                      ) : null,
+                    )}
                   </select>
                 </label>
               )}
@@ -173,35 +210,27 @@ export function DraftEditor(props: {
               />
               <button className={cx(ui.compact, ui.danger)} onClick={() => discardNewObject(o.tempId)}>Discard “{o.title}”</button>
             </div>
-          ))}
+            );
+          })}
         </section>
       )}
       {(draft.objectUpdates?.length ?? 0) > 0 && (
         <section className={styles.proposed}>
           <h4>Changes to existing objects</h4>
-          <p className={cx(ui.muted, ui.small)}>Details from this document that will be saved on objects you already have. Blank fields are left as they are.</p>
-          {draft.objectUpdates!.map((u, i) => {
-            const title = props.objects.find((o) => o.id === u.objectId)?.title ?? "An existing object";
-            return (
-              <div className={styles.proposedItem} key={u.objectId}>
-                <strong>{title}</strong>
-                <ComponentList
-                  ctx={ctx}
-                  draft={draft}
-                  components={u.components}
-                  onChange={(components) => set({ objectUpdates: draft.objectUpdates!.map((x, j) => (j === i ? { ...x, components } : x)) })}
-                  withDraft={(cs, d) => ({ ...d, objectUpdates: (d.objectUpdates ?? []).map((x) => (x.objectId === u.objectId ? { ...x, components: cs } : x)) })}
-                  pickFrom={[...defs.values()]}
-                />
-                <button className={cx(ui.compact, ui.danger)} onClick={() => set({ objectUpdates: draft.objectUpdates!.filter((_, j) => j !== i) })}>
-                  Don't change “{title}”
-                </button>
-              </div>
-            );
-          })}
+          <p className={cx(ui.muted, ui.small)}>Details from this document that will be saved on objects you already have. Nothing else on them changes.</p>
+          {draft.objectUpdates!.map((u, i) => (
+            <ObjectUpdateCard
+              key={u.objectId}
+              update={u}
+              ctx={ctx}
+              onChange={(next) =>
+                set({ objectUpdates: next ? draft.objectUpdates!.map((x, j) => (j === i ? next : x)) : draft.objectUpdates!.filter((_, j) => j !== i) })
+              }
+            />
+          ))}
         </section>
       )}
-      {draft.newObjects.length === 0 && (
+      {props.allowNewObjects && draft.newObjects.length === 0 && (
         <button className={cx(ui.link, ui.small, styles.newObjectLink)} onClick={() => addNewObject()}>+ Create a new object alongside this</button>
       )}
     </div>
@@ -286,7 +315,9 @@ function FieldInput(props: {
   value: DraftValue;
   onChange: (v: DraftValue) => void;
   ctx: ListCtx;
-  onCreateObject: (title: string) => void;
+  onCreateObject?: (title: string) => void;
+  /** Just the input, without its label. */
+  bare?: boolean;
 }) {
   const { field: f, value, onChange } = props;
   const label = (
@@ -342,42 +373,99 @@ function FieldInput(props: {
       const required = f.options.component;
       const options = props.ctx.objects.filter((o) => o.id !== props.ctx.selfId && (!required || o.components.includes(required)));
       input = (
-        <select
-          value={str}
-          onChange={(e) => {
-            if (e.target.value === "__new__") {
-              const title = window.prompt("Name of the new object (e.g. “2019 Honda Civic”)");
-              if (title?.trim()) props.onCreateObject(title.trim());
-              return;
-            }
-            onChange(e.target.value || null);
-          }}
-        >
-          <option value="">—</option>
-          {props.ctx.newObjects.length > 0 && (
-            <optgroup label="New (created on save)">
-              {props.ctx.newObjects.map((o) => (
-                <option key={o.tempId} value={`new:${o.tempId}`}>{o.title}</option>
-              ))}
-            </optgroup>
-          )}
-          <optgroup label="Existing">
-            {options.map((o) => (
-              <option key={o.id} value={o.id} title={o.summary}>{o.title}</option>
-            ))}
-          </optgroup>
-          <option value="__new__">+ New object…</option>
-        </select>
+        <ObjectPicker
+          value={str || null}
+          onChange={onChange}
+          onCreate={props.onCreateObject}
+          options={[
+            ...props.ctx.newObjects.map((o) => ({ value: `new:${o.tempId}`, title: o.title, tag: "new" })),
+            ...options.map((o) => ({ value: o.id, title: o.title, detail: o.summary })),
+          ]}
+        />
       );
       break;
     }
     default:
       input = <input value={str} onChange={(e) => onChange(e.target.value || null)} />;
   }
+  if (props.bare) return <div className={cx(styles.field, styles.bare)}>{input}</div>;
   return (
     <label className={cx(styles.field, f.type === "longtext" && styles.fieldWide)}>
       {label}
       {input}
     </label>
+  );
+}
+
+/** Shows a value the way the owner reads it. */
+function display(f: Omit<FieldDef, "id" | "position">, v: DraftValue, objects: ObjectSummary[]): string {
+  if (v === null || v === undefined || v === "") return "";
+  if (f.type === "boolean") return v ? "Yes" : "No";
+  if (f.type === "ref") return objects.find((o) => o.id === v)?.title ?? String(v);
+  if (f.type === "money" && f.options.currency) return `${v} ${f.options.currency}`;
+  return String(v);
+}
+
+/**
+ * The fields a document will set on an existing object, each as
+ * "current → new", so it's clear nothing else on the object changes.
+ */
+function ObjectUpdateCard(props: {
+  update: DraftObjectUpdate;
+  ctx: ListCtx;
+  onChange: (u: DraftObjectUpdate | null) => void;
+}) {
+  const { update: u, ctx, onChange } = props;
+  const [current, setCurrent] = useState<Draft | null>(null);
+  useEffect(() => {
+    let live = true;
+    api.getObject(u.objectId).then((o) => live && setCurrent(o.current)).catch(() => {});
+    return () => { live = false; };
+  }, [u.objectId]);
+  const title = current?.title ?? ctx.objects.find((o) => o.id === u.objectId)?.title ?? "An existing object";
+
+  const rows = u.components.flatMap((c, ci) => {
+    const def = ctx.defs.get(c.component);
+    if (!def) return [];
+    const now = current?.components.find((x) => x.component === c.component);
+    return def.fields
+      .filter((f) => c.values[f.key] !== null && c.values[f.key] !== undefined && c.values[f.key] !== "")
+      .map((f) => ({ ci, def, f, was: now?.values[f.key] ?? null, value: c.values[f.key] }));
+  });
+
+  const setValue = (ci: number, key: string, v: DraftValue | undefined) => {
+    const components = u.components
+      .map((c, j) => {
+        if (j !== ci) return c;
+        const values = { ...c.values };
+        if (v === undefined) delete values[key];
+        else values[key] = v;
+        return { ...c, values };
+      })
+      .filter((c) => Object.values(c.values).some((x) => x !== null && x !== undefined && x !== ""));
+    onChange(components.length ? { ...u, components } : null);
+  };
+
+  return (
+    <div className={styles.proposedItem}>
+      <strong>{title}</strong>
+      <div className={styles.changes}>
+        {rows.map(({ ci, def, f, was, value }) => (
+          <div className={styles.change} key={`${ci}.${f.key}`}>
+            <div className={styles.changeHead}>
+              <span>{def.name} › {f.label}</span>
+              <button className={ui.icon} title="Don't change this" onClick={() => setValue(ci, f.key, undefined)}>✕</button>
+            </div>
+            <div className={styles.changeBody}>
+              <span className={cx(ui.small, styles.was)}>{display(f, was, ctx.objects) || <em className={ui.muted}>empty</em>}</span>
+              <span className={ui.muted}>→</span>
+              <FieldInput field={{ ...f, label: "" }} value={value} ctx={ctx} onChange={(v) => setValue(ci, f.key, v)} bare />
+            </div>
+          </div>
+        ))}
+        {!rows.length && <p className={cx(ui.muted, ui.small)}>Nothing left to change.</p>}
+      </div>
+      <button className={cx(ui.compact, ui.danger)} onClick={() => onChange(null)}>Don't change “{title}”</button>
+    </div>
   );
 }
