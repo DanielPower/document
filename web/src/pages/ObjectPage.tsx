@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { api } from "../api";
-import { formatValue } from "../components/DocumentTable";
 import { DraftEditor } from "../components/DraftEditor";
+import { DraftView } from "../components/DraftView";
 import { cx } from "../cx";
 import { useAppData } from "../data";
 import ui from "../ui.module.css";
@@ -184,37 +184,7 @@ export function ObjectPage() {
         </details>
       </div>
 
-      <div className={styles.cards}>
-        {draft.components.map((c, i) => {
-          const def = catalog.find((x) => x.key === c.component);
-          const filled = def?.fields.filter((f) => c.values[f.key] != null && c.values[f.key] !== "") ?? [];
-          return (
-            <section key={i} className={styles.card} style={{ borderLeftColor: def?.color }}>
-              <h4>{def?.name ?? c.component}</h4>
-              {filled.length ? (
-                <dl className={styles.fields}>
-                  {filled.map((f) => (
-                    <div key={f.key}>
-                      <dt>{f.label}</dt>
-                      <dd>
-                        {f.type === "ref" ? <Link to={`/objects/${c.values[f.key]}`}>{formatValue(c.values[f.key], f, objects)}</Link> : formatValue(c.values[f.key], f, objects)}
-                      </dd>
-                    </div>
-                  ))}
-                </dl>
-              ) : (
-                <p className={cx(ui.muted, ui.small)}>No details yet.</p>
-              )}
-            </section>
-          );
-        })}
-        {notes && (
-          <section className={styles.card}>
-            <h4>Notes</h4>
-            <p className={styles.notes}>{notes}</p>
-          </section>
-        )}
-      </div>
+      <DraftView components={draft.components} catalog={catalog} objects={objects} notes={notes} />
 
       {!!obj?.linkedFrom.length && (
         <section className={styles.section}>

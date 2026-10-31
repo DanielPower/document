@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { api, type DuplicateGroup } from "../api";
 import { cx } from "../cx";
@@ -13,6 +13,18 @@ export function ObjectsPage() {
   const loadDuplicates = useCallback(() => api.duplicateObjects().then(setDuplicates).catch(() => {}), []);
   useEffect(() => { void loadDuplicates(); }, [loadDuplicates, objects]);
   const shown = objects.filter((o) => !filter || `${o.title} ${o.summary}`.toLowerCase().includes(filter.toLowerCase()));
+  /** Grouped by kind: each object under its first component (Vehicle, Property…), in catalog order. */
+  const groups = useMemo(() => {
+    const by = new Map<string, typeof shown>();
+    for (const o of shown) {
+      const key = o.components[0] ?? "";
+      by.set(key, [...(by.get(key) ?? []), o]);
+    }
+    const order = (k: string) => (k ? catalog.findIndex((c) => c.key === k) : Infinity);
+    return [...by.entries()]
+      .sort(([a], [b]) => order(a) - order(b))
+      .map(([k, list]) => [k ? catalog.find((c) => c.key === k)?.name ?? k : "Other", list] as const);
+  }, [shown, catalog]);
   return (
     <div className={ui.page}>
       <div className={ui.pageHead}>
@@ -29,24 +41,29 @@ export function ObjectsPage() {
           {duplicates.map((g) => <DuplicateGroupCard key={g.objects.map((o) => o.id).join()} group={g} />)}
         </div>
       )}
-      <div className={ui.list}>
-        {shown.map((o) => (
-          <Link key={o.id} to={`/objects/${o.id}`} className={ui.listItem}>
-            <div>
-              <div className={ui.listTitle}>{o.title}</div>
-              <div className={cx(ui.muted, ui.small)}>{o.summary || "no details"}</div>
-            </div>
-            <div className={ui.badges}>
-              {o.components.map((k, i) => {
-                const c = catalog.find((x) => x.key === k);
-                return <span key={i} className={ui.badge} style={{ background: c?.color }}>{c?.name ?? k}</span>;
-              })}
-            </div>
-            <span className={cx(ui.muted, ui.small)}>{o.documentCount} doc{o.documentCount === 1 ? "" : "s"}</span>
-          </Link>
-        ))}
-        {!shown.length && <p className={ui.muted}>No objects yet. They're created from the inbox when the AI spots one, or here.</p>}
-      </div>
+      {groups.map(([label, list]) => (
+        <section key={label} className={styles.kind}>
+          <h3 className={styles.kindHead}>{label} <span className={cx(ui.muted, ui.small)}>{list.length}</span></h3>
+          <div className={ui.list}>
+            {list.map((o) => (
+              <Link key={o.id} to={`/objects/${o.id}`} className={ui.listItem}>
+                <div>
+                  <div className={ui.listTitle}>{o.title}</div>
+                  <div className={cx(ui.muted, ui.small)}>{o.summary || "no details"}</div>
+                </div>
+                <div className={ui.badges}>
+                  {o.components.map((k, i) => {
+                    const c = catalog.find((x) => x.key === k);
+                    return <span key={i} className={ui.badge} style={{ background: c?.color }}>{c?.name ?? k}</span>;
+                  })}
+                </div>
+                <span className={cx(ui.muted, ui.small)}>{o.documentCount} doc{o.documentCount === 1 ? "" : "s"}</span>
+              </Link>
+            ))}
+          </div>
+        </section>
+      ))}
+      {!shown.length && <p className={ui.muted}>No objects yet. They're created from the inbox when the AI spots one, or here.</p>}
     </div>
   );
 }

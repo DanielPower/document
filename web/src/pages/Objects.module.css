@@ -3,3 +3,5 @@
 .groupHead { display: flex; align-items: baseline; gap: 8px; }
 .choice { flex-direction: row; align-items: center; gap: 8px; color: var(--text); font-size: 14px; }
 .groupActions { display: flex; gap: 8px; align-items: center; }
+.kind { margin-bottom: 16px; }
+.kindHead { font-size: 15px; display: flex; gap: 6px; align-items: baseline; }

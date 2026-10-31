@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { api } from "../api";
 import { cx } from "../cx";
@@ -19,23 +19,47 @@ const EXAMPLES = [
   "Which bills are still unpaid?",
 ];
 
-/** Ask questions about the archive; answers cite the documents they come from. */
+const STORE = "docket.ask";
+
+/** The conversation survives leaving the page and reloading, on this device. */
+function loadHistory(): Exchange[] {
+  try {
+    const h = JSON.parse(localStorage.getItem(STORE) ?? "[]") as Exchange[];
+    return Array.isArray(h) ? h.filter((x) => x.response || x.error) : [];
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Ask questions about the archive; answers cite the documents they come from.
+ * Questions in one conversation are follow-ups: the assistant sees the
+ * earlier questions and answers.
+ */
 export function AskPage() {
   const { status } = useAppData();
   const [question, setQuestion] = useState("");
-  const [history, setHistory] = useState<Exchange[]>([]);
+  const [history, setHistory] = useState<Exchange[]>(loadHistory);
   const [busy, setBusy] = useState(false);
+  const end = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    localStorage.setItem(STORE, JSON.stringify(history.filter((x) => x.response || x.error).slice(-20)));
+  }, [history]);
 
   const ask = async (q: string) => {
     if (!q.trim() || busy) return;
+    // Earlier answered turns are the context for this one.
+    const context = history.filter((x) => x.response).map((x) => ({ question: x.question, answer: x.response!.answer }));
     setBusy(true);
     setQuestion("");
-    setHistory((h) => [{ question: q }, ...h]);
+    setHistory((h) => [...h, { question: q }]);
+    requestAnimationFrame(() => end.current?.scrollIntoView({ behavior: "smooth", block: "end" }));
     try {
-      const response = await api.ask(q);
-      setHistory((h) => [{ question: q, response }, ...h.slice(1)]);
+      const response = await api.ask(q, context);
+      setHistory((h) => [...h.slice(0, -1), { question: q, response }]);
     } catch (e) {
-      setHistory((h) => [{ question: q, error: (e as Error).message }, ...h.slice(1)]);
+      setHistory((h) => [...h.slice(0, -1), { question: q, error: (e as Error).message }]);
     } finally {
       setBusy(false);
     }
@@ -47,15 +71,34 @@ export function AskPage() {
 
   return (
     <div className={cx(ui.page, ui.narrow)}>
-      <h2>Ask</h2>
-      <p className={ui.muted}>Questions about your documents. Answers link to the documents they come from; each question is answered on its own.</p>
+      <div className={styles.head}>
+        <h2>Ask</h2>
+        <span className={ui.spacer} />
+        {history.length > 0 && (
+          <button className={ui.compact} disabled={busy} onClick={() => setHistory([])}>New conversation</button>
+        )}
+      </div>
+      <p className={ui.muted}>
+        Questions about your documents. Answers link to the documents they come from
+        {history.length ? ", and you can ask follow-ups like “and last year?”" : ""}.
+      </p>
+
+      {history.map((x, i) => (
+        <div className={styles.exchange} key={i}>
+          <div className={styles.question}>{x.question}</div>
+          {!x.response && !x.error && <p className={cx(ui.muted, ui.pulse)}>Searching your documents…</p>}
+          {x.error && <div className={cx(ui.alert, ui.error)}>{x.error}</div>}
+          {x.response && <Answer response={x.response} />}
+        </div>
+      ))}
+
       <form className={styles.form} onSubmit={(e) => { e.preventDefault(); void ask(question); }}>
         <textarea
           rows={2}
           value={question}
           onChange={(e) => setQuestion(e.target.value)}
           onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); void ask(question); } }}
-          placeholder="e.g. What did the plumber fix, and did I pay it?"
+          placeholder={history.length ? "Ask a follow-up…" : "e.g. What did the plumber fix, and did I pay it?"}
           autoFocus
         />
         <div className={cx(ui.actions, styles.actions)}>
@@ -64,15 +107,7 @@ export function AskPage() {
             EXAMPLES.map((ex) => <button type="button" key={ex} className={cx(ui.link, ui.small)} onClick={() => void ask(ex)}>{ex}</button>)}
         </div>
       </form>
-
-      {history.map((x, i) => (
-        <div className={styles.exchange} key={history.length - i}>
-          <div className={styles.question}>{x.question}</div>
-          {!x.response && !x.error && <p className={cx(ui.muted, ui.pulse)}>Searching your documents…</p>}
-          {x.error && <div className={cx(ui.alert, ui.error)}>{x.error}</div>}
-          {x.response && <Answer response={x.response} />}
-        </div>
-      ))}
+      <div ref={end} />
     </div>
   );
 }

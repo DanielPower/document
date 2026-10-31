@@ -16,3 +16,14 @@
   .left { height: 60dvh; }
   .tabs { flex-wrap: wrap; }
 }
+.head { display: flex; align-items: flex-start; gap: 8px; }
+.title { margin: 0 0 2px; font-size: 18px; }
+.more { position: relative; }
+.more > summary { list-style: none; }
+.more > summary::-webkit-details-marker { display: none; }
+.menu {
+  position: absolute; right: 0; top: calc(100% + 4px); z-index: 6; min-width: 160px;
+  display: flex; flex-direction: column; gap: 4px; padding: 6px;
+  background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: 0 6px 20px rgb(0 0 0 / 0.15);
+}
+.menu > button { text-align: left; }

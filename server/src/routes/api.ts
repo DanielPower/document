@@ -285,10 +285,13 @@ export async function apiRoutes(app: FastifyInstance) {
     return interpretQuestion(Question.parse(req.body).question);
   });
 
-  /** Answers a question about the archive, citing the documents used. */
+  /** Answers a question about the archive, citing the documents used. `history` makes it a follow-up. */
   app.post("/api/ai/ask", async (req) => {
     if (!aiAvailable()) throw new HttpError(503, "AI is not configured (set ANTHROPIC_API_KEY).");
-    return askQuestion(Question.parse(req.body).question);
+    const body = Question.extend({
+      history: z.array(z.object({ question: z.string().max(2000), answer: z.string().max(20000) })).max(20).default([]),
+    }).parse(req.body);
+    return askQuestion(body.question, body.history);
   });
 
   // ---------------------------------------------------------------- objects

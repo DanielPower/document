@@ -210,7 +210,7 @@ export function DocumentsPage() {
       <div className={cx(styles.filterPanel, showFilters && styles.filterPanelOpen)}>
       <div className={styles.filters}>
         <span className={cx(ui.muted, ui.small)}>Has:</span>
-        {catalog.map((c) => {
+        {catalog.filter((c) => (c.documentUsage ?? 1) > 0 || components.includes(c.key)).map((c) => {
           const on = components.includes(c.key);
           return (
             <button

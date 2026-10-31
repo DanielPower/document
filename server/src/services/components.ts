@@ -12,6 +12,7 @@ interface ComponentRow {
   ai_hint: string;
   color: string;
   usage: number;
+  document_usage: number;
   fields: FieldDef[] | null;
 }
 
@@ -19,6 +20,8 @@ export async function listComponents(tx: Tx = sql): Promise<ComponentDef[]> {
   const rows = await tx<ComponentRow[]>`
     select c.id, c.key, c.name, c.description, c.ai_hint, c.color,
       (select count(*)::int from component_instance ci where ci.component_id = c.id) as usage,
+      (select count(*)::int from component_instance ci join document d on d.entity_id = ci.entity_id
+        where ci.component_id = c.id and d.status <> 'trashed') as document_usage,
       (select json_agg(json_build_object(
           'id', f.id, 'key', f.key, 'label', f.label, 'type', f.type, 'description', f.description,
           'required', f.required, 'options', f.options, 'position', f.position) order by f.position, f.key)
@@ -33,6 +36,7 @@ export async function listComponents(tx: Tx = sql): Promise<ComponentDef[]> {
     aiHint: r.ai_hint,
     color: r.color,
     usage: r.usage,
+    documentUsage: r.document_usage,
     fields: r.fields ?? [],
   }));
 }

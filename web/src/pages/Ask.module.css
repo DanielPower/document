@@ -1,8 +1,9 @@
 .form { margin: 12px 0 20px; }
-.exchange { border-top: 1px solid var(--border); padding: 14px 0; }
+.exchange { border-bottom: 1px solid var(--border); padding: 14px 0; }
 .question { font-weight: 600; margin-bottom: 6px; }
 .answer p { margin: 0 0 8px; line-height: 1.5; }
 .answer ul { margin: 0 0 8px; padding-left: 20px; line-height: 1.5; }
 .cite { display: inline-block; font-size: 11px; line-height: 1; padding: 2px 5px; margin: 0 2px; border-radius: 8px; background: color-mix(in srgb, var(--accent) 15%, transparent); vertical-align: super; }
 .citations { font-size: 13px; padding-left: 20px; margin: 8px 0; }
 .actions { flex-wrap: wrap; }
+.head { display: flex; align-items: center; gap: 8px; }
