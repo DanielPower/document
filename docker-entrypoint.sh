@@ -10,10 +10,13 @@ PGID="${PGID:-1000}"
 if [ "$(id -u)" = "0" ]; then
   for dir in "${DATA_DIR:-/data}" "${CONSUME_DIR:-/consume}"; do
     [ -n "$dir" ] || continue
-    mkdir -p "$dir"
+    mkdir -p "$dir" || true
     # Only walk the tree when ownership is wrong, so restarts stay fast.
+    # On NFS with root squashing, root can't chown; the share then has to be
+    # writable by PUID:PGID already, so warn instead of refusing to start.
     if [ "$(stat -c %u:%g "$dir")" != "$PUID:$PGID" ]; then
-      chown -R "$PUID:$PGID" "$dir"
+      chown -R "$PUID:$PGID" "$dir" 2>/dev/null \
+        || echo "warning: can't change the owner of $dir to $PUID:$PGID (NFS root squashing?); it must be writable by that user" >&2
     fi
   done
   exec setpriv --reuid="$PUID" --regid="$PGID" --clear-groups "$@"
