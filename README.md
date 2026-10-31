@@ -75,7 +75,7 @@ create database docket owner docket;
 | `PUID` / `PGID` | `1000` | User and group the container runs as |
 | `AI_ASK_MAX_STEPS` | `8` | Most searches/reads the Ask assistant makes for one question |
 | `EMBEDDING_URL` | — | OpenAI-compatible embeddings API, e.g. `http://llama-swap:8080/v1`. Enables semantic search (also needs pgvector) |
-| `EMBEDDING_MODEL` | `qwen3-embedding-0.6b` | Model name sent to that API |
+| `EMBEDDING_MODEL` | `qwen3-embedding-4b` | Model name sent to that API |
 | `EMBEDDING_API_KEY` | — | Sent as a bearer token, if the API needs one |
 | `EMBEDDING_QUERY_PREFIX` | Qwen3 instruction | Text put before search queries. Set it empty for models without one; `search_query: ` for nomic-embed |
 | `EMBEDDING_DOCUMENT_PREFIX` | empty | Text put before document chunks, e.g. `search_document: ` for nomic-embed |

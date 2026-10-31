@@ -47,7 +47,7 @@ export const config = {
      */
     url: env("EMBEDDING_URL", "").replace(/\/+$/, ""),
     apiKey: env("EMBEDDING_API_KEY", ""),
-    model: env("EMBEDDING_MODEL", "qwen3-embedding-0.6b"),
+    model: env("EMBEDDING_MODEL", "qwen3-embedding-4b"),
     /**
      * Text put before search queries (not documents). Qwen3-Embedding expects an
      * instruction; models like nomic-embed use "search_query: ".
