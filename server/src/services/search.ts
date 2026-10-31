@@ -5,6 +5,7 @@ import { HttpError } from "../errors.ts";
 import type { AggregateResult, AggregateSpec, DocumentStatus, DocumentSummary } from "../shared/types.ts";
 import { componentsByKey } from "./components.ts";
 import { embedQuery, semanticAvailable, toVectorLiteral } from "./embeddings.ts";
+import { loadComponents } from "./entities.ts";
 import { normalizeDraftValue } from "./values.ts";
 
 export interface SearchParams {
@@ -23,6 +24,8 @@ export interface SearchParams {
   semantic?: boolean;
   limit?: number;
   offset?: number;
+  /** Include each document's component values (for table views and exports). */
+  values?: boolean;
 }
 
 type Frag = PendingQuery<Row[]>;
@@ -39,6 +42,8 @@ const RRF_K = 60;
 async function filterConditions(p: SearchParams): Promise<{ where: Frag }> {
   const conds: Frag[] = [];
   if (p.status?.length) conds.push(sql`d.status = any(${p.status}::text[])`);
+  // The trash only shows up when asked for by name.
+  else conds.push(sql`d.status <> 'trashed'`);
   for (const key of p.components ?? []) {
     conds.push(sql`exists (select 1 from component_instance ci join component_def cd on cd.id = ci.component_id
                            where ci.entity_id = e.id and cd.key = ${key})`);
@@ -61,9 +66,14 @@ const SUMMARY_COLUMNS = sql`
   d.document_date as "documentDate", d.added_at as "addedAt", d.page_count as "pageCount",
   d.thumb_path is not null as "hasThumb", d.error,
   (select array_agg(cd.key order by ci.position) from component_instance ci join component_def cd on cd.id = ci.component_id
-    where ci.entity_id = e.id) as components`;
+    where ci.entity_id = e.id) as components,
+  case when d.status = 'inbox' and d.proposal is not null then jsonb_build_object(
+    'title', d.proposal->'draft'->>'title',
+    'documentDate', d.proposal->'draft'->>'documentDate',
+    'components', coalesce((select jsonb_agg(x->>'component') from jsonb_array_elements(d.proposal->'draft'->'components') x), '[]'::jsonb)
+  ) end as proposed`;
 
-type Row_ = Omit<DocumentSummary, "components"> & { components: string[] | null; total: number; chunk?: string | null; text_hit?: boolean; meaning_hit?: boolean };
+type Row_ = Omit<DocumentSummary, "components" | "proposed"> & { components: string[] | null; proposed: DocumentSummary["proposed"] | null; total: number; chunk?: string | null; text_hit?: boolean; meaning_hit?: boolean };
 
 const headline = (tsq: Frag) =>
   sql`ts_headline('english', left(d.content, 100000), ${tsq}, 'MaxFragments=2,MaxWords=18,MinWords=6,StartSel=<mark>,StopSel=</mark>')`;
@@ -143,12 +153,15 @@ export async function searchDocuments(p: SearchParams): Promise<{ total: number;
       limit ${limit} offset ${offset}`;
   }
 
+  const values = p.values ? await loadComponents(sql, rows.map((r) => r.id)) : null;
   return {
     total: rows[0]?.total ?? 0,
     semantic: !!qvec,
     items: rows.map(({ total: _t, chunk, text_hit, meaning_hit, ...r }) => ({
+      ...(values ? { values: values.get(r.id) ?? [] } : {}),
       ...r,
       components: r.components ?? [],
+      proposed: r.proposed ?? undefined,
       snippet: r.snippet ?? (chunk ? excerpt(chunk) : undefined),
       match: text_hit && meaning_hit ? "both" : text_hit ? "text" : meaning_hit ? "meaning" : undefined,
     })),

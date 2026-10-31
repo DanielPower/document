@@ -4,3 +4,4 @@ img.preview { object-fit: contain; }
 @media (max-width: 1000px) {
   .preview { min-height: 60vh; }
 }
+.empty { display: grid; place-items: center; background: var(--bg); color: var(--muted); }

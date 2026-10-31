@@ -3,6 +3,7 @@ import { sql } from "./db.ts";
 import { aiAvailable, analyzeDocument } from "./services/ai.ts";
 import { MissingToolError, runOcr } from "./services/ocr.ts";
 import { kickEmbeddings } from "./services/embeddings.ts";
+import { purgeTrash } from "./services/ingest.ts";
 
 const MAX_ATTEMPTS = 3;
 /** Wait before the next attempt, indexed by the number of attempts made so far. */
@@ -119,6 +120,11 @@ export function startWorker(log: (m: string) => void): void {
         });
     }
   };
+
+  // Empty old trash now and then.
+  const purge = () => purgeTrash().then((n) => n && log(`purged ${n} document(s) from the trash`)).catch((err) => log(`trash purge failed: ${(err as Error).message}`));
+  void purge();
+  setInterval(purge, 6 * 60 * 60 * 1000).unref();
 
   sql.listen("docket_jobs", () => wake?.()).catch((err) => log(`listen failed: ${err.message}`));
   void loop();

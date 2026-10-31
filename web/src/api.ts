@@ -49,6 +49,8 @@ export interface SearchQuery {
   to?: string;
   sort?: string;
   semantic?: boolean;
+  /** Include each document's field values. */
+  values?: boolean;
   limit?: number;
   offset?: number;
 }
@@ -56,6 +58,7 @@ export interface SearchQuery {
 function qs(params: SearchQuery): string {
   const u = new URLSearchParams();
   for (const [k, v] of Object.entries(params)) {
+    if (k === "values") { if (v) u.set(k, "1"); continue; }
     if (v === undefined || v === "" || v === true || (Array.isArray(v) && !v.length)) continue;
     if (v === false) { u.set(k, "0"); continue; }
     if (Array.isArray(v)) {
@@ -80,11 +83,15 @@ export const api = {
   reconcile: (draft: Draft, sameAs: Record<string, string> = {}) =>
     request<{ draft: Draft; notes: string[] }>("POST", "/api/drafts/reconcile", { draft, sameAs }),
   reanalyze: (id: string, ocr = false) => request<{ ok: true }>("POST", `/api/documents/${id}/reanalyze`, { ocr }),
-  deleteDocument: (id: string) => request<{ ok: true }>("DELETE", `/api/documents/${id}`),
+  /** To the trash; `forever` deletes the document and its files now. */
+  deleteDocument: (id: string, forever = false) => request<{ ok: true }>("DELETE", `/api/documents/${id}${forever ? "?forever=1" : ""}`),
+  restoreDocument: (id: string) => request<{ ok: true }>("POST", `/api/documents/${id}/restore`),
+  unfileDocument: (id: string) => request<{ ok: true }>("POST", `/api/documents/${id}/unfile`),
+  emptyTrash: () => request<{ deleted: number }>("DELETE", "/api/trash"),
   upload: (files: File[]) => {
     const form = new FormData();
     files.forEach((f) => form.append("file", f, f.name));
-    return request<{ results: Array<{ filename: string; id?: string; duplicate?: boolean; error?: string }> }>("POST", "/api/documents", form);
+    return request<{ results: Array<{ filename: string; id?: string; duplicate?: boolean; restored?: boolean; error?: string }> }>("POST", "/api/documents", form);
   },
 
   components: () => request<ComponentDef[]>("GET", "/api/components"),

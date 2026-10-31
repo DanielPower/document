@@ -31,3 +31,20 @@
   .cardThumb { height: 140px; }
   .meaningToggle { margin-left: 0; }
 }
+.viewBar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.segmented { display: inline-flex; }
+.segmented > button { border-radius: 0; padding: 3px 10px; font-size: 12px; }
+.segmented > button:first-child { border-radius: 6px 0 0 6px; }
+.segmented > button:last-child { border-radius: 0 6px 6px 0; border-left: none; }
+.segOn { background: var(--text); color: var(--bg); border-color: var(--text); }
+.columnsMenu { position: relative; }
+.columnsMenu > summary { list-style: none; }
+.columnsMenu > summary::-webkit-details-marker { display: none; }
+.columnsList {
+  position: absolute; left: 0; top: calc(100% + 4px); z-index: 6; min-width: 240px; max-height: 60vh; overflow-y: auto;
+  display: flex; flex-direction: column; gap: 6px; padding: 8px 10px;
+  background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: 0 6px 20px rgb(0 0 0 / 0.15);
+}
+.columnGroup { border: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
+.columnGroup legend { font-weight: 600; font-size: 12px; padding: 0; margin-bottom: 2px; }
+.columnGroup label { color: var(--text); font-size: 13px; }

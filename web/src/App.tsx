@@ -13,6 +13,7 @@ import { DocumentsPage } from "./pages/Documents";
 import { InboxPage } from "./pages/Inbox";
 import { ObjectPage } from "./pages/ObjectPage";
 import { ObjectsPage } from "./pages/Objects";
+import { TrashPage } from "./pages/Trash";
 
 export function App() {
   return (
@@ -51,10 +52,12 @@ function Shell() {
     if (!files.length) return;
     try {
       const { results } = await api.upload(files);
-      const ok = results.filter((r) => r.id && !r.duplicate).length;
+      const ok = results.filter((r) => r.id && !r.duplicate && !r.restored).length;
+      const restored = results.filter((r) => r.restored).length;
       const dupes = results.filter((r) => r.duplicate).length;
       for (const r of results.filter((r) => r.error)) toast(`${r.filename}: ${r.error}`, "error");
       if (ok) toast(`Uploaded ${ok} file${ok > 1 ? "s" : ""}; processing…`);
+      if (restored) toast(`${restored} file${restored > 1 ? "s were" : " was"} in the trash and ${restored > 1 ? "have" : "has"} been restored.`);
       if (dupes) toast(`${dupes} file${dupes > 1 ? "s were" : " was"} already in the archive.`);
       await refresh();
       if (ok) navigate("/");
@@ -120,6 +123,7 @@ function Shell() {
           <Route path="/objects" element={<ObjectsPage />} />
           <Route path="/objects/:id" element={<ObjectPage />} />
           <Route path="/components" element={<ComponentsPage />} />
+          <Route path="/trash" element={<TrashPage />} />
         </Routes>
       </main>
       {scanning && <ScanDialog onClose={() => setScanning(false)} onUpload={upload} />}

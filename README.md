@@ -25,6 +25,10 @@ A car repair bill is `Invoice` + `Related asset → 2019 Civic` + `Vehicle servi
 
 Because filed documents are used as examples, the AI picks up your conventions as you correct it.
 
+**Reviewing quickly.** J and K move through the inbox and Ctrl/⌘+Enter files the open document. Edits are kept while you look at other documents. After filing or deleting, the toast offers **Undo**.
+
+**Trash.** Deleted documents go to the trash (linked from the Documents page) and are deleted for good, with their files, after 30 days. Uploading a file that's in the trash restores it.
+
 ## On your phone
 
 Docket works in a phone's browser: the navigation moves to a bottom tab bar, the inbox and document pages stack, and search filters fold behind a **Filters** button. PDFs are drawn with PDF.js, since mobile browsers don't show a PDF inside a page.
@@ -106,6 +110,8 @@ The Documents page combines:
 - typed field filters, e.g. *Invoice › Total ≥ 500*, *Invoice › Paid is No*, *Insurance policy › End on/before 2026-01-01*
 
 **Ask AI** (the button next to Search) turns a question like "how much do I owe on unpaid house bills this year?" into those filters, plus a total when the question asks for one (sum, average, min, max or count, optionally per year, month or linked object). It shows how it read the question. The filters it sets are ordinary filters you can adjust, and the total follows them. Totals only use exact word matching, never "similar meaning", so they don't silently include loosely related documents.
+
+The Documents page shows cards or a **table** whose columns are fields you pick (or ones chosen from the results). **Export CSV** downloads every matching document with those columns.
 
 The **Ask** page answers questions from the documents' contents ("when does my home insurance renew, and what's the deductible?"). Claude searches, totals and reads documents with tools, then answers with numbered links to the documents it used. Citations are checked: only documents the tools actually returned can be cited. Each question costs a few model calls, up to `AI_ASK_MAX_STEPS`.
 

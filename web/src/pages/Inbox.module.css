@@ -18,7 +18,8 @@
   .list { max-height: 30vh; }
   /* The preview scrolls inside a fixed-height box so the editor is reachable below it. */
   .preview { height: 65dvh; }
-  .editor { border-left: none; border-top: 1px solid var(--border); }
+  /* Not a scroll container here, so the File bar sticks to the page's scroll instead. */
+  .editor { border-left: none; border-top: 1px solid var(--border); overflow: visible; }
 }
 /* Phones: "/" is the list, "/inbox/:id" is the document. */
 @media (max-width: 700px) {
@@ -37,3 +38,32 @@
 .feedbackList { margin: 0; padding-left: 18px; }
 .editorFieldset { border: none; margin: 0; padding: 0; min-width: 0; }
 .editorFieldset:disabled { opacity: 0.6; }
+.itemBody { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.itemBadges { margin: 2px 0; }
+.edited { color: var(--accent); }
+.alertText { margin: 0 0 4px; }
+.alertActions { display: flex; gap: 8px; margin-top: 6px; }
+/* File stays in reach however long the form gets. */
+.actionBar {
+  position: sticky; bottom: 0; z-index: 2;
+  display: flex; gap: 8px; align-items: center;
+  margin: 14px -16px -12px; padding: 10px 16px;
+  background: var(--panel); border-top: 1px solid var(--border);
+}
+.more { position: relative; }
+.more > summary { list-style: none; padding: 6px 10px; }
+.more > summary::-webkit-details-marker { display: none; }
+.menu {
+  position: absolute; right: 0; bottom: calc(100% + 4px); z-index: 3;
+  display: flex; flex-direction: column; gap: 4px; min-width: 150px; padding: 6px;
+  background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius);
+  box-shadow: 0 6px 20px rgb(0 0 0 / 0.15);
+}
+.menu > button { text-align: left; }
+@media (max-width: 700px) {
+  /* Sit on top of the bottom tab bar. */
+  .actionBar { bottom: calc(52px + env(safe-area-inset-bottom)); padding: 8px 16px; }
+}
+@media (max-width: 700px), (pointer: coarse) {
+  .keysHint { display: none; }
+}

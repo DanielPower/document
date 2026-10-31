@@ -17,7 +17,7 @@ export function Preview({ doc }: { doc: DocumentDetail }) {
   }
   if (doc.mimeType.startsWith("text/")) return <pre className={cx(styles.preview, styles.text)}>{doc.content}</pre>;
   if (doc.mimeType.startsWith("image/")) return <img className={styles.preview} src={fileUrl(doc.id, "original")} alt={doc.title} />;
-  return <div className={styles.preview}>No preview yet</div>;
+  return <div className={cx(styles.preview, styles.empty)}>{doc.status === "failed" ? "No preview: processing failed" : "No preview yet"}</div>;
 }
 
 /** Plain text shown in the same frame as a document preview. */

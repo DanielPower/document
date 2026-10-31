@@ -37,11 +37,11 @@ export function DocumentPage() {
     }
   };
 
-  const act = async (fn: () => Promise<unknown>, done: string) => {
+  const act = async (fn: () => Promise<unknown>, done?: string) => {
     setBusy(true);
     try {
       await fn();
-      toast(done);
+      if (done) toast(done);
       return true;
     } catch (e) {
       toast((e as Error).message, "error");
@@ -89,9 +89,16 @@ export function DocumentPage() {
           <button
             className={ui.danger}
             disabled={busy}
-            onClick={async () => { if (confirm("Delete this document and its files?") && (await act(() => api.deleteDocument(doc.id), "Deleted"))) navigate("/documents"); }}
+            onClick={async () => {
+              if (!(await act(() => api.deleteDocument(doc.id)))) return;
+              navigate("/documents");
+              toast("Moved to the trash", "info", {
+                label: "Undo",
+                run: async () => { await api.restoreDocument(doc.id); await refresh(); navigate(`/documents/${doc.id}`); },
+              });
+            }}
           >
-            Delete
+            Move to trash
           </button>
         </div>
       </section>
