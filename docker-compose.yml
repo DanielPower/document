@@ -1,0 +1,13 @@
+services:
+  docket:
+    build: .
+    image: docket:latest
+    restart: unless-stopped
+    env_file: .env
+    ports:
+      - "8080:8080"
+    volumes:
+      # Originals, OCR'd PDFs and thumbnails. Back this up together with the database.
+      - ./data:/data
+      # Drop scans here (e.g. from a scanner's SMB/FTP target); they're ingested and removed.
+      - ./consume:/consume
