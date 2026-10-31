@@ -90,7 +90,7 @@ export function InboxPage() {
             {i.hasThumb ? <img src={thumbUrl(i.id)} alt="" /> : <div className="thumb-ph">{i.mimeType.split("/")[1]}</div>}
             <div>
               <div className="title">{i.title}</div>
-              <div className={`status ${i.status}`}>{STATUS_LABEL[i.status]}</div>
+              <div className={`status ${i.status}`}>{i.status === "queued" && i.error ? "Failed, retrying soon" : STATUS_LABEL[i.status]}</div>
             </div>
           </button>
         ))}
@@ -101,7 +101,10 @@ export function InboxPage() {
           <section className="inbox-preview"><Preview doc={doc} /></section>
           <section className="inbox-editor">
             {ACTIVE.includes(doc.status) ? (
-              <p className="muted">{STATUS_LABEL[doc.status]}</p>
+              <>
+                <p className="muted">{doc.status === "queued" && doc.error ? "Failed, retrying soon" : STATUS_LABEL[doc.status]}</p>
+                {doc.error && <div className="alert warn">{doc.error}</div>}
+              </>
             ) : (
               <>
                 {doc.status === "failed" && <div className="alert error">Processing failed: {doc.error}</div>}

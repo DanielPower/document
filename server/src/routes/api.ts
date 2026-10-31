@@ -128,7 +128,7 @@ export async function apiRoutes(app: FastifyInstance) {
     const { id } = IdParams.parse(req.params);
     const { ocr } = z.object({ ocr: z.boolean().default(false) }).parse(req.body ?? {});
     const [d] = await sql`
-      update document set status = 'queued', attempts = 0, error = null, proposal = null,
+      update document set status = 'queued', attempts = 0, error = null, proposal = null, retry_at = null,
         content = case when ${ocr} then '' else content end,
         archive_path = case when ${ocr} then null else archive_path end
       where entity_id = ${id} and status in ('inbox', 'filed', 'failed') returning entity_id`;

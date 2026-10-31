@@ -4,7 +4,52 @@ import path from "node:path";
 import { promisify } from "node:util";
 import { config } from "../config.ts";
 
-const run = promisify(execFile);
+const execFileAsync = promisify(execFile);
+
+const INSTALL_HINT: Record<string, string> = {
+  ocrmypdf: "Install OCRmyPDF (macOS: brew install ocrmypdf; Debian/Ubuntu: apt install ocrmypdf).",
+  pdftotext: "It is part of Poppler (macOS: brew install poppler; Debian/Ubuntu: apt install poppler-utils).",
+  pdfinfo: "It is part of Poppler (macOS: brew install poppler; Debian/Ubuntu: apt install poppler-utils).",
+  pdftoppm: "It is part of Poppler (macOS: brew install poppler; Debian/Ubuntu: apt install poppler-utils).",
+};
+
+/** A required program isn't installed. Retrying can't help, so the worker fails the document at once. */
+export class MissingToolError extends Error {}
+
+function missingToolMessage(bin: string): string {
+  const name = path.basename(bin);
+  return `${bin} is not installed or not on the PATH. ${INSTALL_HINT[name] ?? ""}`.trim();
+}
+
+/** Runs a program, turning "command not found" into a MissingToolError with install instructions. */
+async function run(bin: string, args: string[], opts: { timeout?: number; maxBuffer?: number } = {}) {
+  try {
+    return await execFileAsync(bin, args, opts);
+  } catch (err) {
+    if ((err as { code?: unknown }).code === "ENOENT") throw new MissingToolError(missingToolMessage(bin));
+    throw err;
+  }
+}
+
+/** Returns a message for each OCR program that can't be found. Empty when everything is installed. */
+export async function checkOcrTools(): Promise<string[]> {
+  const tools: Array<[string, string[]]> = [
+    [config.ocr.ocrmypdfBin, ["--version"]],
+    ["pdftotext", ["-v"]],
+    ["pdfinfo", ["-v"]],
+    ["pdftoppm", ["-v"]],
+  ];
+  const missing: string[] = [];
+  for (const [bin, args] of tools) {
+    try {
+      await execFileAsync(bin, args, { timeout: 30_000 });
+    } catch (err) {
+      // Only "not found" matters here; some versions exit non-zero for -v.
+      if ((err as { code?: unknown }).code === "ENOENT") missing.push(missingToolMessage(bin));
+    }
+  }
+  return missing;
+}
 
 export interface OcrResult {
   content: string;
@@ -46,11 +91,11 @@ export async function runOcr(opts: { id: string; originalPath: string; mime: str
   try {
     await run(config.ocr.ocrmypdfBin, [...args, original, archive], { timeout: 30 * 60_000, maxBuffer: 64 * 1024 * 1024 });
   } catch (err) {
+    if (err instanceof MissingToolError) throw err;
     const e = err as { code?: number | string; stderr?: string; message: string };
     // ocrmypdf exit codes: 2 bad input, 8 encrypted PDF, 6 "already has text" (not raised with --skip-text)
     const detail = (e.stderr || e.message).trim().split("\n").slice(-5).join("\n");
     if (e.code === 8) throw new Error("The PDF is encrypted; decrypt it and upload again.");
-    if (e.code === "ENOENT") throw new Error(`OCR tool not found: ${config.ocr.ocrmypdfBin}. Is OCRmyPDF installed?`);
     throw new Error(`OCR failed (exit ${e.code}): ${detail}`);
   }
 
@@ -62,8 +107,9 @@ export async function runOcr(opts: { id: string; originalPath: string; mime: str
   try {
     await run("pdftoppm", ["-png", "-f", "1", "-l", "1", "-singlefile", "-scale-to", "480", archive, thumbBase]);
     thumbPath = thumbRel;
-  } catch {
-    // A missing thumbnail is cosmetic.
+  } catch (err) {
+    // A failed thumbnail is cosmetic, but a missing program is not.
+    if (err instanceof MissingToolError) throw err;
   }
 
   return {

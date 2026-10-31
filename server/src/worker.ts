@@ -1,9 +1,11 @@
 import { config } from "./config.ts";
 import { sql } from "./db.ts";
 import { aiAvailable, analyzeDocument } from "./services/ai.ts";
-import { runOcr } from "./services/ocr.ts";
+import { MissingToolError, runOcr } from "./services/ocr.ts";
 
 const MAX_ATTEMPTS = 3;
+/** Wait before the next attempt, indexed by the number of attempts made so far. */
+const RETRY_DELAYS = ["1 minute", "5 minutes"];
 /** A job locked longer than this is assumed to belong to a crashed worker. */
 const STALE_LOCK = "30 minutes";
 
@@ -23,10 +25,10 @@ interface Job {
  */
 async function claim(): Promise<Job | null> {
   const [job] = await sql<Job[]>`
-    update document d set status = 'ocr', locked_at = now(), attempts = d.attempts + 1, error = null
+    update document d set status = 'ocr', locked_at = now(), attempts = d.attempts + 1, error = null, retry_at = null
     where d.entity_id = (
       select entity_id from document
-      where status = 'queued'
+      where (status = 'queued' and (retry_at is null or retry_at <= now()))
          or (status in ('ocr', 'analyzing') and locked_at < now() - ${STALE_LOCK}::interval)
       order by added_at
       for update skip locked
@@ -50,9 +52,13 @@ async function processJob(job: Job, log: (m: string) => void): Promise<void> {
     }
   } catch (err) {
     const msg = (err as Error).message;
-    log(`OCR failed for ${id} (attempt ${job.attempts}): ${msg}`);
+    // A missing program fails the same way every time, so don't retry.
+    const giveUp = err instanceof MissingToolError || job.attempts >= MAX_ATTEMPTS;
+    const delay = RETRY_DELAYS[Math.min(job.attempts, RETRY_DELAYS.length) - 1];
+    log(`OCR failed for ${id} (attempt ${job.attempts}${giveUp ? ", giving up" : `, retrying in ${delay}`}): ${msg}`);
     await sql`
-      update document set status = ${job.attempts >= MAX_ATTEMPTS ? "failed" : "queued"}, error = ${msg}, locked_at = null
+      update document set status = ${giveUp ? "failed" : "queued"}, error = ${msg}, locked_at = null,
+        retry_at = ${giveUp ? null : sql`now() + ${delay}::interval`}
       where entity_id = ${id}`;
     return;
   }
