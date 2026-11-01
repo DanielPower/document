@@ -92,6 +92,21 @@ export interface Draft {
    * licence plate learned from this document. Only the listed fields change.
    */
   objectUpdates?: DraftObjectUpdate[];
+  /**
+   * Changes to existing component definitions, made when the draft is
+   * applied. Only changes that can't lose data: a field's required flag, and
+   * new fields. The owner asks for these when revising a proposal.
+   */
+  componentChanges?: DraftComponentChange[];
+}
+
+export interface DraftComponentChange {
+  /** Key of an existing component. */
+  component: string;
+  /** Field key -> new required flag. */
+  required?: Record<string, boolean>;
+  /** Fields to add at the end. */
+  addFields?: ComponentInput["fields"];
 }
 
 export interface DraftObjectUpdate {

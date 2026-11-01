@@ -106,9 +106,10 @@ export async function updateComponent(tx: Tx, id: string, input: ComponentInput)
   const existing = await tx<{ id: string; type: string }[]>`select id, type from field_def where component_id = ${id}`;
   const existingById = new Map(existing.map((f) => [f.id, f]));
   const keep = new Set(input.fields.filter((f) => f.id).map((f) => f.id!));
-  // Removing a field deletes its values (cascade). Temporarily move keys out of the way so renames/swaps don't clash.
+  // Removing a field deletes its values (cascade). Temporarily move keys out of the way so renames/swaps don't clash
+  // (the temporary key must still match the snake_case check on field_def.key).
   await tx`delete from field_def where component_id = ${id} and not (id = any(${[...keep]}::uuid[]))`;
-  await tx`update field_def set key = '_tmp_' || replace(id::text, '-', '') where component_id = ${id}`;
+  await tx`update field_def set key = 'tmp_' || replace(id::text, '-', '') where component_id = ${id}`;
 
   let position = 0;
   for (const f of input.fields) {
