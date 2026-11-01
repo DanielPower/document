@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { api } from "../api";
-import type { ComponentDef, ComponentInput, Draft, DraftComponent, DraftObjectUpdate, DraftValue, FieldDef, ObjectSummary } from "../types";
+import type { ComponentDef, ComponentInput, Draft, DraftComponent, DraftComponentChange, DraftObjectUpdate, DraftValue, FieldDef, ObjectSummary } from "../types";
+import { describeChange, withChange } from "../../../server/src/shared/componentChanges.ts";
 import { cx } from "../cx";
 import { migrateComponentValues } from "../migrateValues";
 import { needlesFor } from "../provenance";
@@ -11,11 +12,16 @@ import { DateInput, NumberInput, quietClass } from "./FieldInputs";
 import { ObjectPicker } from "./ObjectPicker";
 import styles from "./DraftEditor.module.css";
 
-type Def = Pick<ComponentDef, "key" | "name" | "color" | "description"> & { fields: Array<Omit<FieldDef, "id" | "position">>; isNew?: boolean };
+type Def = Pick<ComponentDef, "key" | "name" | "color" | "description"> & { fields: Array<Omit<FieldDef, "id" | "position">>; isNew?: boolean; changed?: boolean };
 type Field = Omit<FieldDef, "id" | "position">;
 
 export function defsFor(catalog: ComponentDef[], draft: Draft): Map<string, Def> {
   const m = new Map<string, Def>(catalog.map((c) => [c.key, c]));
+  // Existing definitions as filing will leave them.
+  for (const ch of draft.componentChanges ?? []) {
+    const def = m.get(ch.component);
+    if (def) m.set(ch.component, { ...withChange(def, ch), changed: true });
+  }
   for (const nc of draft.newComponents) {
     if (!m.has(nc.key)) m.set(nc.key, { ...nc, color: nc.color ?? "#6b7280", isNew: true });
   }
@@ -134,7 +140,21 @@ export function DraftEditor(props: {
     },
   };
 
-  const hasEffects = draft.newComponents.length + draft.newObjects.length + (draft.objectUpdates?.length ?? 0) > 0;
+  /** Dropping a change to a definition also drops values written into fields it would have added. */
+  const discardChange = (ch: DraftComponentChange) => {
+    const added = new Set((ch.addFields ?? []).map((f) => f.key));
+    const strip = (cs: DraftComponent[]) =>
+      cs.map((c) => (c.component !== ch.component ? c : { ...c, values: Object.fromEntries(Object.entries(c.values).filter(([k]) => !added.has(k))) }));
+    onChange({
+      ...draft,
+      componentChanges: (draft.componentChanges ?? []).filter((x) => x !== ch),
+      components: strip(draft.components),
+      newObjects: draft.newObjects.map((o) => ({ ...o, components: strip(o.components) })),
+      objectUpdates: draft.objectUpdates?.map((u) => ({ ...u, components: strip(u.components) })),
+    });
+  };
+
+  const hasEffects = draft.newComponents.length + draft.newObjects.length + (draft.objectUpdates?.length ?? 0) + (draft.componentChanges?.length ?? 0) > 0;
   const fileAs = draft.components.map((c) => defs.get(c.component)?.name ?? humanizeKey(c.component));
 
   return (
@@ -193,6 +213,26 @@ export function DraftEditor(props: {
               }}
             />
           ))}
+
+          {(draft.componentChanges ?? []).map((ch) => {
+            const def = catalog.find((c) => c.key === ch.component);
+            if (!def) return null;
+            return (
+              <Effect key={ch.component} sym="~" kind="change">
+                <div className={styles.effectLine}>
+                  <span>Change component</span>
+                  <Dot color={def.color} />
+                  <b>{def.name}</b>
+                </div>
+                <div className={cx(ui.small, ui.muted)}>
+                  {describeChange(def, ch).join(" · ")}. Applies to everything that has {def.name}.
+                </div>
+                <div className={styles.effectActions}>
+                  <button className={cx(ui.compact, ui.ghost, ui.danger)} onClick={() => discardChange(ch)}>Don't change</button>
+                </div>
+              </Effect>
+            );
+          })}
 
           {draft.newObjects.map((o, i) => {
             const m = rankMatches(o, props.objects);

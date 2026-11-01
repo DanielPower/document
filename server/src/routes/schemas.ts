@@ -43,4 +43,13 @@ export const DraftSchema = z.object({
     .array(z.object({ tempId: z.string(), title: z.string(), components: z.array(DraftComponentSchema) }))
     .default([]),
   objectUpdates: z.array(z.object({ objectId: z.string().uuid(), components: z.array(DraftComponentSchema) })).default([]),
+  componentChanges: z
+    .array(
+      z.object({
+        component: z.string(),
+        required: z.record(z.string(), z.boolean()).optional(),
+        addFields: z.array(FieldInputSchema.omit({ id: true })).optional(),
+      }),
+    )
+    .default([]),
 });

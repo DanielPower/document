@@ -4,6 +4,7 @@
  * only documents with nothing to decide can be filed in a batch.
  */
 import { defsFor, display, rankMatches } from "./components/DraftEditor";
+import { describeChange } from "../../server/src/shared/componentChanges.ts";
 import type { ComponentDef, DocumentSummary, Draft, ObjectSummary } from "./types";
 
 export type Group = "needs" | "ready" | "processing" | "failed";
@@ -15,6 +16,8 @@ export interface Effects {
   updates: string[];
   /** Names of component definitions it creates. */
   newComponents: string[];
+  /** "Loan: Principal no longer required" for each existing definition it changes. */
+  changedComponents: string[];
   /** Titles of existing objects it links to. */
   links: string[];
 }
@@ -51,6 +54,10 @@ export function effectsOf(draft: Draft, catalog: ComponentDef[], objects: Object
       return `${title(u.objectId)}: ${labels.join(", ")}`;
     }),
     newComponents: draft.newComponents.map((c) => c.name || c.key),
+    changedComponents: (draft.componentChanges ?? []).flatMap((ch) => {
+      const def = catalog.find((c) => c.key === ch.component);
+      return def ? [`${def.name}: ${describeChange(def, ch).join(", ")}`] : [];
+    }),
     links: [...links],
   };
 }
@@ -64,6 +71,7 @@ export function questionsOf(draft: Draft, catalog: ComponentDef[], objects: Obje
     if (best && !dismissed(o.tempId)) out.push(`Same as “${best.title}”?`);
   }
   for (const nc of draft.newComponents) out.push(`New component “${nc.name || nc.key}”`);
+  for (const ch of draft.componentChanges ?? []) out.push(`Change component “${catalog.find((c) => c.key === ch.component)?.name ?? ch.component}”`);
   for (const c of draft.components) {
     for (const f of defs.get(c.component)?.fields ?? []) {
       const v = c.values[f.key];
@@ -105,5 +113,6 @@ export function fileLabel(draft: Draft): string {
   if (draft.newObjects.length) parts.push(`creates ${n(draft.newObjects.length, "object")}`);
   if (draft.objectUpdates?.length) parts.push(`updates ${n(draft.objectUpdates.length, "object")}`);
   if (draft.newComponents.length) parts.push(`adds ${n(draft.newComponents.length, "component")}`);
+  if (draft.componentChanges?.length) parts.push(`changes ${n(draft.componentChanges.length, "component")}`);
   return parts.length ? `File · ${parts.join(", ")}` : "File";
 }

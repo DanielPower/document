@@ -1,7 +1,8 @@
 import type { Tx } from "../db.ts";
 import { HttpError } from "../errors.ts";
-import type { ComponentDef, Draft, DraftComponent, DraftValue } from "../shared/types.ts";
-import { componentsByKey, createComponent } from "./components.ts";
+import type { ComponentDef, ComponentInput, Draft, DraftComponent, DraftValue } from "../shared/types.ts";
+import { withChange } from "../shared/componentChanges.ts";
+import { componentsByKey, createComponent, updateComponent } from "./components.ts";
 import { reconcileDraft } from "./objects.ts";
 import { formatValue, fromStored, normalizeDraftValue, toStored, type StoredValue } from "./values.ts";
 
@@ -90,6 +91,21 @@ export async function applyDraft(tx: Tx, entityId: string, input: Draft): Promis
     await createComponent(tx, def);
     existingKeys.add(def.key);
     createdComponents.push(def.key);
+  }
+  // Changes to existing definitions the owner asked for (a field no longer
+  // required, a new field). Only changes that keep every stored value.
+  if (draft.componentChanges?.length) {
+    const before = await componentsByKey(tx);
+    for (const change of draft.componentChanges) {
+      const def = before.get(change.component);
+      if (!def) throw new HttpError(400, `Component "${change.component}" no longer exists.`);
+      const next = withChange<ComponentInput["fields"][number], ComponentDef>(def, change);
+      if (next.fields.length === def.fields.length && next.fields.every((f, i) => f.required === def.fields[i].required)) continue;
+      await updateComponent(tx, def.id, {
+        key: def.key, name: def.name, description: def.description, aiHint: def.aiHint, color: def.color,
+        fields: next.fields.map((f) => ({ id: f.id, key: f.key, label: f.label, type: f.type, description: f.description ?? "", required: !!f.required, options: f.options ?? {} })),
+      });
+    }
   }
   const catalog = await componentsByKey(tx);
 

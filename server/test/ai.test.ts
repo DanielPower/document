@@ -5,12 +5,12 @@ import type { ComponentDef } from "../src/shared/types.ts";
 
 // ai.ts loads config, which needs a database URL; nothing here connects.
 process.env.DATABASE_URL ??= "postgres://localhost/unused";
-const { toDraft } = await import("../src/services/ai.ts");
+const { toDraft, draftToAnalysis } = await import("../src/services/ai.ts");
 
 const MAZDA = "11111111-1111-4111-8111-111111111111";
 const HOUSE = "22222222-2222-4222-8222-222222222222";
 
-function def(key: string, name: string, fields: Array<Pick<ComponentDef["fields"][number], "key" | "type">>): ComponentDef {
+function def(key: string, name: string, fields: Array<Pick<ComponentDef["fields"][number], "key" | "type"> & { required?: boolean }>): ComponentDef {
   return {
     id: key, key, name, description: "", aiHint: "", color: null,
     fields: fields.map((f, i) => ({ id: f.key, label: f.key, description: "", required: false, options: {}, position: i, ...f })),
@@ -32,6 +32,7 @@ const analysis = (components: Analysis["components"]): Analysis => ({
   new_components: [],
   new_objects: [],
   existing_object_updates: [],
+  component_changes: [],
   reasoning: "",
 });
 
@@ -71,4 +72,75 @@ test("keeps one of two identical Related asset links", () => {
     ])),
     ["asset_link"],
   );
+});
+
+// --- Changes to existing component definitions (Revise) ---------------------
+
+const LOC = "33333333-3333-4333-8333-333333333333";
+const loanCatalog = new Map(
+  [
+    def("loan", "Loan", [{ key: "lender", type: "text", required: true }, { key: "principal", type: "money", required: true }, { key: "term_months", type: "number" }]),
+  ].map((c) => [c.key, c]),
+);
+const newField = (key: string, type: "money" | "text" = "money") => ({
+  key, label: key, type, description: "", required: false, choices: [], currency: null, ref_component: null, identifier: false,
+});
+const loanAnalysis = (extra: Partial<Analysis>): Analysis => ({
+  ...analysis([]),
+  existing_object_updates: [{ object_id: LOC, components: [{ component: "loan", values: [{ field: "lender", value: "RBC" }] }] }],
+  ...extra,
+});
+
+test("revising: makes a field of an existing component optional", () => {
+  const a = loanAnalysis({ component_changes: [{ component: "loan", required_changes: [{ field: "principal", required: false }], add_fields: [] }] });
+  const { draft, warnings } = toDraft(a, loanCatalog, new Set([LOC]), { allowComponentChanges: true });
+  assert.deepEqual(draft.componentChanges, [{ component: "loan", required: { principal: false } }]);
+  assert.deepEqual(warnings, []);
+});
+
+test("first pass: changes to existing components are ignored", () => {
+  const a = loanAnalysis({ component_changes: [{ component: "loan", required_changes: [{ field: "principal", required: false }], add_fields: [] }] });
+  const { draft, warnings } = toDraft(a, loanCatalog, new Set([LOC]));
+  assert.equal(draft.componentChanges, undefined);
+  assert.match(warnings.join(" "), /only made when you ask/);
+});
+
+test("revising: an existing component restated in new_components becomes a change", () => {
+  const a = loanAnalysis({
+    new_components: [{
+      key: "loan", name: "Loan", description: "", ai_hint: "",
+      fields: [{ ...newField("lender", "text"), required: true }, newField("principal"), newField("credit_limit")],
+    }],
+  });
+  const { draft, warnings } = toDraft(a, loanCatalog, new Set([LOC]), { allowComponentChanges: true });
+  assert.equal(draft.newComponents.length, 0);
+  assert.deepEqual(draft.componentChanges?.[0].required, { principal: false });
+  assert.deepEqual(draft.componentChanges?.[0].addFields?.map((f) => f.key), ["credit_limit"]);
+  assert.deepEqual(warnings, []);
+});
+
+test("revising: a change that does nothing is dropped, unknown fields warn", () => {
+  const a = loanAnalysis({
+    component_changes: [{ component: "loan", required_changes: [{ field: "term_months", required: false }, { field: "nope", required: false }], add_fields: [] }],
+  });
+  const { draft, warnings } = toDraft(a, loanCatalog, new Set([LOC]), { allowComponentChanges: true });
+  assert.equal(draft.componentChanges, undefined);
+  assert.match(warnings.join(" "), /no field "nope"/);
+});
+
+test("revising: values for an added field are kept", () => {
+  const a = loanAnalysis({
+    existing_object_updates: [{ object_id: LOC, components: [{ component: "loan", values: [{ field: "credit_limit", value: "25000" }] }] }],
+    component_changes: [{ component: "loan", required_changes: [], add_fields: [newField("credit_limit")] }],
+  });
+  const { draft, warnings } = toDraft(a, loanCatalog, new Set([LOC]), { allowComponentChanges: true });
+  assert.deepEqual(draft.objectUpdates?.[0].components[0].values, { credit_limit: 25000 });
+  assert.deepEqual(warnings, []);
+});
+
+test("component changes survive a round trip through the model's format", () => {
+  const a = loanAnalysis({ component_changes: [{ component: "loan", required_changes: [{ field: "principal", required: false }], add_fields: [newField("credit_limit")] }] });
+  const first = toDraft(a, loanCatalog, new Set([LOC]), { allowComponentChanges: true }).draft;
+  const again = toDraft({ ...draftToAnalysis(first), reasoning: "" }, loanCatalog, new Set([LOC]), { allowComponentChanges: true }).draft;
+  assert.deepEqual(again.componentChanges, first.componentChanges);
 });
