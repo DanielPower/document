@@ -130,7 +130,7 @@ export interface DocumentSummary {
   match?: "text" | "meaning" | "both";
   error: string | null;
   /** For inbox documents with an AI proposal: what the proposal would file it as. */
-  proposed?: { title: string; documentDate: string | null; components: string[] };
+  proposed?: { title: string; documentDate: string | null; components: string[]; draft: Draft };
   /** The document's components with their values; only when asked for (`values=1`). */
   values?: DraftComponent[];
 }
@@ -157,6 +157,8 @@ export interface ObjectDetail extends ObjectSummary {
   current: Draft;
   /** Other objects whose fields link to this one (a policy covering this car, say). */
   linkedFrom: Array<{ id: string; title: string }>;
+  /** The document each detail came from, for details set by filing a document and unchanged since. */
+  sources: Array<{ component: string; field: string; documentId: string; documentTitle: string; setAt: string }>;
 }
 
 export interface AggregateSpec {

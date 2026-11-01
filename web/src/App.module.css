@@ -1,27 +1,51 @@
 /* The shell is exactly the window's height; pages scroll inside .main (or in their own columns), never the window. */
 .shell { height: 100vh; height: 100dvh; display: flex; flex-direction: column; }
-.topbar { flex-shrink: 0; display: flex; align-items: center; gap: 16px; padding: 8px 16px; background: var(--panel); border-bottom: 1px solid var(--border); z-index: 5; }
-.brand { font-weight: 700; font-size: 16px; }
-.nav { display: flex; gap: 4px; }
-.navLink { color: var(--text); padding: 6px 10px; border-radius: 6px; }
-.navLinkActive { background: var(--bg); font-weight: 600; }
-.count { background: var(--accent); color: var(--accent-ink); border-radius: 10px; padding: 0 7px; font-size: 11px; margin-left: 4px; }
-.countProcessing { background: var(--muted); }
+.topbar { flex-shrink: 0; height: 40px; display: flex; align-items: center; gap: 4px; padding: 0 8px 0 14px; background: var(--panel); border-bottom: 1px solid var(--border); z-index: 5; }
+.brand { font-weight: 700; font-size: 14px; letter-spacing: .06em; text-transform: uppercase; margin-right: 10px; }
+.nav { display: flex; gap: 2px; align-items: center; }
+.navLink { color: var(--text-2); padding: 0 9px; height: 28px; border-radius: 5px; display: inline-flex; align-items: center; gap: 5px; text-decoration: none !important; }
+.navLink:hover { background: var(--sunk); }
+.navLinkActive { background: var(--bg); color: var(--text); font-weight: 600; }
+.navIcon { display: none; }
+.navLabel { white-space: nowrap; }
+.navCounts { display: inline-flex; gap: 3px; }
+.count { font: 600 10.5px/16px var(--font-mono); background: var(--accent); color: var(--accent-ink); border-radius: 8px; padding: 0 5px; }
+.countProcessing { background: var(--muted); color: var(--panel); }
+.addTab { display: none; }
+.searchBox { margin: 0 10px; width: 340px; min-width: 0; justify-content: flex-start; background: var(--sunk); color: var(--muted); font-weight: 400; }
+.searchText { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; text-align: left; }
+.searchKey { flex-shrink: 0; }
+.aiOff { margin-right: 6px; }
+.actions { display: flex; gap: 6px; align-items: center; }
+.settings { padding: 0 6px; }
 .main { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; }
 .dropOverlay { position: fixed; inset: 0; background: color-mix(in srgb, var(--accent) 18%, transparent); border: 3px dashed var(--accent); display: grid; place-items: center; font-size: 22px; font-weight: 600; z-index: 20; pointer-events: none; }
-.actions { display: flex; gap: 8px; align-items: center; }
-/* Phones: the nav becomes a bottom tab bar, and the top bar keeps only the brand and the add buttons. */
+.sheetBackdrop { display: none; }
+@media (max-width: 1000px) {
+  .searchBox { width: 40px; flex-shrink: 0; margin: 0 4px; justify-content: center; padding: 0; }
+  .searchText, .searchKey { display: none; }
+}
+/* Phones: the nav becomes a bottom tab bar with a + in the middle; the top bar keeps the brand, search and settings. */
 @media (max-width: 700px) {
-  .topbar { gap: 8px; padding: 6px 12px; padding-top: max(6px, env(safe-area-inset-top)); }
+  .topbar { height: auto; min-height: 44px; padding: 0 6px 0 12px; padding-top: env(safe-area-inset-top); }
+  .actions { display: none; }
+  .searchBox { order: 3; border-color: transparent; background: none; color: var(--text-2); }
+  .settings { order: 4; }
   .nav {
     position: fixed; left: 0; right: 0; bottom: 0; z-index: 10; gap: 0;
     background: var(--panel); border-top: 1px solid var(--border);
     padding-bottom: env(safe-area-inset-bottom);
   }
-  .navLink { flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; padding: 8px 2px; min-height: 52px; border-radius: 0; font-size: 12px; text-align: center; }
+  .navLink { flex: 1; min-width: 0; flex-direction: column; justify-content: center; gap: 1px; padding: 4px 2px; height: 52px; border-radius: 0; font-size: 11px; text-align: center; position: relative; }
+  .navLink:hover { background: none; }
   .navLinkActive { color: var(--accent); background: none; }
-  .count { margin-left: 0; }
-  .navCounts { display: flex; gap: 2px; }
+  .navIcon { display: block; height: 20px; }
+  .navCounts { position: absolute; top: 3px; left: calc(50% + 6px); }
+  .addTab { display: flex; flex: 1; align-items: center; justify-content: center; height: 52px; border: none; background: none; padding: 0; }
+  .addTab svg { width: 40px; height: 32px; padding: 5px 9px; border-radius: 8px; background: var(--accent); color: var(--accent-ink); box-sizing: border-box; }
   /* Room for the tab bar under the scrolling content. */
   .main { padding-bottom: calc(52px + env(safe-area-inset-bottom)); }
+  .sheetBackdrop { display: flex; position: fixed; inset: 0; z-index: 30; background: rgb(15 18 24 / .38); align-items: flex-end; }
+  .sheet { width: 100%; background: var(--panel); border-radius: 12px 12px 0 0; padding: 10px 12px calc(12px + env(safe-area-inset-bottom)); display: flex; flex-direction: column; gap: 8px; }
+  .sheet > button { justify-content: flex-start; min-height: 44px; font-size: 15px; }
 }

@@ -1,0 +1,11 @@
+.backdrop { position: fixed; inset: 0; z-index: 40; background: rgb(15 18 24 / .35); display: flex; justify-content: center; align-items: flex-start; padding: 10vh 12px 12px; }
+.palette { width: min(620px, 100%); background: var(--panel); border: 1px solid var(--border); border-radius: 8px; box-shadow: 0 20px 50px rgb(0 0 0 / .25); overflow: hidden; display: flex; flex-direction: column; max-height: 70vh; }
+.inputRow { display: flex; align-items: center; gap: 8px; padding: 0 12px; border-bottom: 1px solid var(--border); color: var(--muted); }
+.inputRow input { flex: 1; border: none; outline: none !important; min-height: 44px; font-size: 15px; padding: 0; background: none; color: var(--text); }
+.list { list-style: none; margin: 0; padding: 4px; overflow-y: auto; }
+.row { display: flex; align-items: center; gap: 8px; padding: 6px 8px; border-radius: 4px; cursor: pointer; min-width: 0; }
+.rowActive { background: var(--accent-soft); }
+.kind { font-size: 11px; color: var(--muted); width: 62px; flex-shrink: 0; }
+.main { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 500; }
+.detail { max-width: 45%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.hint { margin: 0; padding: 10px 12px; }

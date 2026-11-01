@@ -1,4 +1,4 @@
-.viewer { flex: 1; min-width: 0; min-height: 0; display: flex; flex-direction: column; background: #525659; }
+.viewer { flex: 1; min-width: 0; min-height: 0; display: flex; flex-direction: column; background: var(--canvas); }
 .toolbar { display: flex; align-items: center; gap: 4px; padding: 4px 8px; background: var(--panel); border-bottom: 1px solid var(--border); }
 .pageCount { color: var(--muted); font-variant-numeric: tabular-nums; }
 .scroller { flex: 1; min-height: 0; overflow: auto; }
@@ -29,3 +29,5 @@
   transform: rotate(var(--rotate)) scaleX(var(--scale-x)) scale(var(--min-font-size-inv));
 }
 .textLayer ::selection { background: color-mix(in srgb, AccentColor, transparent 50%); color: transparent; }
+/* A value being located from the inbox review. */
+.textLayer .hit { background: rgb(255 196 0 / 0.42); border-radius: 2px; box-shadow: 0 0 0 2px rgb(255 196 0 / 0.42); }

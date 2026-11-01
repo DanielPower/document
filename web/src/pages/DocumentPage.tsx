@@ -54,11 +54,11 @@ export function DocumentPage() {
   };
 
   return (
-    <div className={styles.page}>
+    <div className={cx(styles.page, doc.mimeType.startsWith("text/") && styles.textDoc)}>
       <section className={styles.left}>
         <div className={styles.tabs}>
-          <button className={cx(tab === "preview" && styles.tabOn)} onClick={() => setTab("preview")}>Preview</button>
-          <button className={cx(tab === "text" && styles.tabOn)} onClick={() => setTab("text")}>Text</button>
+          <button className={cx(ui.compact, tab === "preview" && styles.tabOn)} onClick={() => setTab("preview")}>Page</button>
+          <button className={cx(ui.compact, tab === "text" && styles.tabOn)} onClick={() => setTab("text")}>Text</button>
           <span className={ui.spacer} />
           <a href={fileUrl(doc.id, "original", true)}>Original</a>
           {doc.hasArchive && <a href={fileUrl(doc.id, "archive", true)}>Searchable PDF</a>}
@@ -67,7 +67,7 @@ export function DocumentPage() {
       </section>
       <section className={styles.right}>
         <div className={cx(ui.muted, ui.small)}>
-          {doc.originalFilename} · {STATUS_LABEL[doc.status]} · added {new Date(doc.addedAt).toLocaleDateString()}
+          {doc.originalFilename} · {STATUS_LABEL[doc.status]} · added {doc.addedAt.slice(0, 10)}
           {doc.status === "inbox" && <> · <Link to={`/inbox/${doc.id}`}>review in inbox</Link></>}
         </div>
         {editing ? (
@@ -95,10 +95,10 @@ export function DocumentPage() {
                 <h2 className={styles.title}>{doc.current.title}</h2>
                 <div className={cx(ui.muted, ui.small)}>{doc.current.documentDate ?? "No date"}</div>
               </div>
-              <button className={ui.primary} onClick={() => setEditing(true)}>Edit</button>
-              <details className={styles.more}>
-                <summary className={ui.button} aria-label="More actions">⋯</summary>
-                <div className={styles.menu}>
+              <button className={ui.compact} onClick={() => setEditing(true)}>Edit</button>
+              <details className={ui.menuWrap}>
+                <summary className={cx(ui.button, ui.compact, ui.ghost)} aria-label="More actions">⋯</summary>
+                <div className={ui.menu}>
                   <button
                     disabled={busy}
                     title="Send it back to the inbox with a fresh AI proposal"

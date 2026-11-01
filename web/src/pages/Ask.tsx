@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { api } from "../api";
 import { cx } from "../cx";
 import { useAppData } from "../data";
@@ -42,6 +42,7 @@ export function AskPage() {
   const [history, setHistory] = useState<Exchange[]>(loadHistory);
   const [busy, setBusy] = useState(false);
   const end = useRef<HTMLDivElement>(null);
+  const [params, setParams] = useSearchParams();
 
   useEffect(() => {
     localStorage.setItem(STORE, JSON.stringify(history.filter((x) => x.response || x.error).slice(-20)));
@@ -64,6 +65,14 @@ export function AskPage() {
       setBusy(false);
     }
   };
+
+  // A question sent from the search box (/ask?q=…) is asked straight away.
+  const pending = params.get("q");
+  useEffect(() => {
+    if (!pending || !status?.ai) return;
+    setParams({}, { replace: true });
+    void ask(pending);
+  }, [pending, status?.ai]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (status && !status.ai) {
     return <div className={cx(ui.page, ui.narrow)}><h2>Ask</h2><p className={ui.muted}>Ask needs AI. Set ANTHROPIC_API_KEY to turn it on.</p></div>;

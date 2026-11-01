@@ -1,6 +1,7 @@
 import { useId, useMemo, useRef, useState } from "react";
 import { cx } from "../cx";
 import ui from "../ui.module.css";
+import { quietClass } from "./FieldInputs";
 import styles from "./ObjectPicker.module.css";
 
 export interface PickerOption {
@@ -29,6 +30,8 @@ export function ObjectPicker(props: {
   /** Offered as the last row; called with the typed name. */
   onCreate?: (title: string) => void;
   placeholder?: string;
+  /** Reads as text until pointed at (review rows). */
+  quiet?: boolean;
 }) {
   const { value, options, onChange, onCreate } = props;
   const [open, setOpen] = useState(false);
@@ -65,6 +68,7 @@ export function ObjectPicker(props: {
       <div className={styles.control}>
         <input
           ref={input}
+          className={cx(props.quiet && quietClass)}
           role="combobox"
           aria-expanded={open}
           aria-controls={listId}
@@ -104,7 +108,7 @@ export function ObjectPicker(props: {
                 <>
                   <span className={styles.rowTitle}>
                     {r.option.title}
-                    {r.option.tag && <span className={cx(ui.badge, ui.badgeNew, styles.tag)}>{r.option.tag}</span>}
+                    {r.option.tag && <span className={cx(ui.tagNew, styles.tag)}>{r.option.tag}</span>}
                     {r.option.value === value && <span className={cx(ui.muted, ui.small)}> · selected</span>}
                   </span>
                   {r.option.detail && <span className={cx(ui.muted, ui.small, styles.detail)}>{r.option.detail}</span>}

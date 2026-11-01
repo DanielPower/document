@@ -1,27 +1,38 @@
-.head { display: flex; align-items: flex-start; gap: 8px; margin-bottom: 12px; }
-.head h2 { margin-bottom: 4px; }
-.more { position: relative; }
-.more > summary { list-style: none; }
-.more > summary::-webkit-details-marker { display: none; }
-.menu {
-  position: absolute; right: 0; top: calc(100% + 4px); z-index: 6; width: 300px;
-  display: flex; flex-direction: column; gap: 8px; padding: 10px;
-  background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: 0 6px 20px rgb(0 0 0 / 0.15);
+/* Details on the left, the history (totals and a ledger of documents) on the right. */
+.page { flex: 1; min-height: 0; display: grid; grid-template-columns: 360px minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); }
+.left { background: var(--panel); border-right: 1px solid var(--border); display: flex; flex-direction: column; min-height: 0; overflow-y: auto; }
+.head { padding: 10px 14px; border-bottom: 1px solid var(--border-soft); display: flex; flex-direction: column; gap: 4px; }
+.crumb { margin: 0 0 4px; }
+.titleRow { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.title { margin: 0; font-size: 18px; }
+.headActions { display: flex; gap: 4px; margin-top: 2px; }
+.mergeMenu { left: 0; right: auto; width: 300px; padding: 10px; gap: 8px; }
+.mergeBtn { align-self: flex-start; }
+.leftBody { padding: 10px 14px 16px; display: flex; flex-direction: column; gap: 14px; }
+.right { min-width: 0; min-height: 0; overflow-y: auto; padding: 12px 16px 20px; display: flex; flex-direction: column; gap: 10px; }
+.stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); }
+.stats > div { padding: 7px 12px; border-right: 1px solid var(--border-soft); display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.stats > div:last-child { border-right: none; }
+.statLabel { font-size: 11.5px; color: var(--muted); }
+.statValue { font-size: 16px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.unit { font-size: 11px; font-weight: 400; color: var(--muted); }
+.bars { display: flex; align-items: flex-end; gap: 3px; height: 24px; }
+.bars i { flex: 1; max-width: 10px; background: color-mix(in srgb, var(--accent) 35%, var(--panel)); border-radius: 1px; display: block; }
+.bars .barNow { background: var(--accent); }
+.year td { background: var(--bg); font-size: 11.5px; font-weight: 600; color: var(--muted); padding: 4px 10px; }
+.date { white-space: nowrap; width: 100px; }
+.docTitle { font-weight: 500; }
+.docTitle a { color: var(--text); }
+.note { margin: 0; }
+.notesLabel { margin-top: 10px; }
+@media (max-width: 1000px) {
+  .page { flex: none; grid-template-columns: 1fr; grid-template-rows: none; }
+  .left { border-right: none; border-bottom: 1px solid var(--border); overflow: visible; }
+  .right { overflow: visible; }
 }
-.menu hr { border: none; border-top: 1px solid var(--border); margin: 2px 0; width: 100%; }
-.menu > button { align-self: flex-start; }
-.section { margin-top: 20px; }
-.pill { display: inline-block; padding: 2px 10px; border: 1px solid var(--border); border-radius: 12px; background: var(--panel); }
-.tableWrap { overflow-x: auto; background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); }
-.table { border-collapse: collapse; width: 100%; }
-.table th, .table td { padding: 7px 10px; border-bottom: 1px solid var(--border); text-align: left; }
-.table tbody tr:last-child td { border-bottom: none; }
-.table th { font-size: 12px; color: var(--muted); }
-.num { text-align: right !important; font-variant-numeric: tabular-nums; white-space: nowrap; }
-.total { font-weight: 600; }
-.year { margin-bottom: 12px; }
-.yearLabel { font-size: 12px; font-weight: 600; color: var(--muted); margin: 6px 0; }
-.amount { font-variant-numeric: tabular-nums; white-space: nowrap; }
 @media (max-width: 700px) {
-  .menu { width: min(300px, calc(100vw - 24px)); }
+  .stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .stats > div:nth-child(2) { border-right: none; }
+  .stats > div:nth-child(-n + 2) { border-bottom: 1px solid var(--border-soft); }
+  .mergeMenu { width: min(300px, calc(100vw - 24px)); }
 }

@@ -8,7 +8,7 @@ export function slugify(s: string): string {
   return /^[a-z]/.test(k) ? k : k ? `c_${k}` : "";
 }
 
-const TYPE_LABELS: Record<FieldType, string> = {
+export const TYPE_LABELS: Record<FieldType, string> = {
   text: "Text",
   longtext: "Long text",
   number: "Number",

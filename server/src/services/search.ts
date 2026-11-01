@@ -70,7 +70,8 @@ const SUMMARY_COLUMNS = sql`
   case when d.status = 'inbox' and d.proposal is not null then jsonb_build_object(
     'title', d.proposal->'draft'->>'title',
     'documentDate', d.proposal->'draft'->>'documentDate',
-    'components', coalesce((select jsonb_agg(x->>'component') from jsonb_array_elements(d.proposal->'draft'->'components') x), '[]'::jsonb)
+    'components', coalesce((select jsonb_agg(x->>'component') from jsonb_array_elements(d.proposal->'draft'->'components') x), '[]'::jsonb),
+    'draft', d.proposal->'draft'
   ) end as proposed`;
 
 type Row_ = Omit<DocumentSummary, "components" | "proposed"> & { components: string[] | null; proposed: DocumentSummary["proposed"] | null; total: number; chunk?: string | null; text_hit?: boolean; meaning_hit?: boolean };

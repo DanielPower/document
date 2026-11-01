@@ -4,6 +4,7 @@ import { cleanInput, ComponentDefEditor, emptyComponent, toInput } from "../comp
 import { cx } from "../cx";
 import { useAppData } from "../data";
 import ui from "../ui.module.css";
+import { Dot } from "../components/Chip";
 import styles from "./Components.module.css";
 import type { ComponentInput } from "../types";
 
@@ -60,7 +61,8 @@ export function ComponentsPage() {
         </p>
       </div>
       <div className={styles.layout}>
-        <div className={ui.list}>
+        <div className={styles.side}>
+          <div className={styles.tools}>
           <button className={ui.primary} onClick={() => setEditing({ id: null, value: emptyComponent() })}>New component</button>
           {status?.ai && (
             <div className={styles.generate}>
@@ -73,9 +75,11 @@ export function ComponentsPage() {
               <button disabled={busy || prompt.trim().length < 3} onClick={generate}>{busy ? "Working…" : "Generate with AI"}</button>
             </div>
           )}
+          </div>
+          <div className={ui.list}>
           {catalog.map((c) => (
             <button key={c.id} className={cx(ui.listItem, editing?.id === c.id && ui.listItemActive)} onClick={() => setEditing({ id: c.id, value: toInput(c) })}>
-              <span className={ui.dot} style={{ background: c.color }} />
+              <Dot color={c.color} />
               <div className={ui.grow}>
                 <div className={ui.listTitle}>{c.name} <span className={cx(ui.muted, ui.mono, ui.small)}>{c.key}</span></div>
                 <div className={cx(ui.muted, ui.small)}>{c.fields.length ? c.fields.map((f) => f.label).join(", ") : "tag (no fields)"}</div>
@@ -83,6 +87,7 @@ export function ComponentsPage() {
               <span className={cx(ui.muted, ui.small)}>{c.usage ?? 0} use{c.usage === 1 ? "" : "s"}</span>
             </button>
           ))}
+          </div>
         </div>
         {editing && (
           <div className={styles.panel}>

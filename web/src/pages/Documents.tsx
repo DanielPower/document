@@ -1,12 +1,19 @@
-import { useEffect, useMemo, useState } from "react";
-import { Link, useSearchParams } from "react-router-dom";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { api, thumbUrl } from "../api";
+import { ComponentChip, Dot } from "../components/Chip";
 import { allColumns, defaultColumns, DocumentTable, toCsv } from "../components/DocumentTable";
+import { DraftView } from "../components/DraftView";
+import { DateInput } from "../components/FieldInputs";
 import { cx } from "../cx";
 import { useAppData } from "../data";
 import ui from "../ui.module.css";
 import styles from "./Documents.module.css";
-import type { AggregateResult, AggregateSpec, ComponentDef, DocumentSummary, ObjectSummary } from "../types";
+import type { AggregateResult, AggregateSpec, ComponentDef, DocumentDetail, DocumentSummary, ObjectSummary } from "../types";
+
+/** A question for the AI rather than words to search for. */
+const looksLikeQuestion = (s: string) =>
+  /\?\s*$/.test(s) || /^(how|what|when|where|which|who|why|show|list|find|all)\b/i.test(s) || /\b(this|last|next) (year|month|week)\b/i.test(s) || /\b(unpaid|overdue|paid|due)\b/i.test(s);
 
 const OPS_BY_TYPE: Record<string, Array<[string, string]>> = {
   number: [["eq", "="], ["gt", ">"], ["gte", "≥"], ["lt", "<"], ["lte", "≤"], ["set", "has value"], ["empty", "is empty"]],
@@ -47,8 +54,15 @@ export function DocumentsPage() {
   const [warnings, setWarnings] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
   const [interpreting, setInterpreting] = useState(false);
-  /** Cards or a table; remembered on this device. */
-  const [view, setViewState] = useState<"cards" | "table">(() => (localStorage.getItem("docket.view") === "table" ? "table" : "cards"));
+  const navigate = useNavigate();
+  const filterMenu = useRef<HTMLDetailsElement>(null);
+  /** A table or cards; remembered on this device. The table is the default. */
+  const [view, setViewState] = useState<"cards" | "table">(() => {
+    // Table by default; cards on phones, where a wide table doesn't fit. A choice you made wins.
+    const saved = localStorage.getItem("docket.view");
+    if (saved === "cards" || saved === "table") return saved;
+    return matchMedia("(max-width: 700px)").matches ? "cards" : "table";
+  });
   const setView = (v: "cards" | "table") => { localStorage.setItem("docket.view", v); setViewState(v); };
   /** Field columns the owner picked for the table; null = chosen from the results. */
   const [picked, setPickedState] = useState<string[] | null>(() => {
@@ -163,108 +177,168 @@ export function DocumentsPage() {
 
   const filterCount = components.length + where.length + (ref ? 1 : 0) + (from || to ? 1 : 0);
   const hasFilters = !!(q || components.length || where.length || ref || from || to || agg);
+  const isPhone = matchMedia("(max-width: 1000px)").matches;
+
+  /** Typed text is a search; a question goes to the AI when it's on, which turns it into filters. */
+  const submit = () => {
+    const t = text.trim();
+    if (appStatus?.ai && t && looksLikeQuestion(t)) void interpret();
+    else update((p) => { if (t) p.set("q", t); else p.delete("q"); p.delete("agg"); });
+  };
+
+  const removeComponent = (k: string) => update((p) => { p.delete("c"); components.filter((x) => x !== k).forEach((x) => p.append("c", x)); });
+  const year = new Date().getFullYear();
+  const datePresets: Array<[string, string, string]> = [
+    ["This year", `${year}-01-01`, `${year}-12-31`],
+    ["Last year", `${year - 1}-01-01`, `${year - 1}-12-31`],
+    ["Last 90 days", new Date(Date.now() - 90 * 864e5).toISOString().slice(0, 10), ""],
+  ];
+  const dateLabel = datePresets.find(([, f, t]) => f === from && t === to)?.[0] ?? (from && to ? `${from} – ${to}` : from ? `from ${from}` : `until ${to}`);
+
+  // Peek: the selected row's details beside the table (wide screens).
+  const [peekId, setPeekId] = useState<string | null>(null);
+  const [peek, setPeek] = useState<DocumentDetail | null>(null);
+  useEffect(() => {
+    if (!peekId) { setPeek(null); return; }
+    let live = true;
+    api.getDocument(peekId).then((d) => live && setPeek(d)).catch((e) => toast(e.message, "error"));
+    return () => { live = false; };
+  }, [peekId, toast]);
+  useEffect(() => { if (peekId && !items.some((i) => i.id === peekId)) setPeekId(null); }, [items, peekId]);
+  // ↑/↓ move the peek through the rows.
+  useEffect(() => {
+    if (view !== "table" || isPhone) return;
+    const h = (e: KeyboardEvent) => {
+      const t = e.target as HTMLElement;
+      if (["INPUT", "TEXTAREA", "SELECT"].includes(t.tagName)) return;
+      if (e.key !== "ArrowDown" && e.key !== "ArrowUp" && e.key !== "Enter") return;
+      if (e.key === "Enter") { if (peekId) navigate(`/documents/${peekId}`); return; }
+      e.preventDefault();
+      const i = items.findIndex((x) => x.id === peekId);
+      const next = items[Math.max(0, Math.min(items.length - 1, i + (e.key === "ArrowDown" ? 1 : -1)))];
+      if (next) setPeekId(next.id);
+    };
+    window.addEventListener("keydown", h);
+    return () => window.removeEventListener("keydown", h);
+  }, [items, peekId, view, isPhone, navigate]);
+
+  /** One-click edits from the peek ("Mark paid"): saves the document with that value. */
+  const quickSet = async (index: number, field: string, value: boolean) => {
+    if (!peek) return;
+    const draft = structuredClone(peek.current);
+    draft.components[index].values[field] = value;
+    try {
+      await api.saveDocument(peek.id, draft, false);
+      setPeek(await api.getDocument(peek.id));
+      const r = await api.searchDocuments(query);
+      setItems(r.items);
+      toast("Saved");
+    } catch (e) {
+      toast((e as Error).message, "error");
+    }
+  };
 
   return (
-    <div className={ui.page}>
-      <form className={styles.searchbar} onSubmit={(e) => { e.preventDefault(); update((p) => (text ? p.set("q", text) : p.delete("q"))); }}>
-        <input
-          value={text}
-          onChange={(e) => setText(e.target.value)}
-          placeholder={appStatus?.ai ? 'Search, or ask: "unpaid house bills this year"' : 'Search text, e.g. brake "kingsway auto" -oil'}
-          autoFocus={!matchMedia("(max-width: 700px)").matches}
-        />
-        <select value={status} onChange={(e) => update((p) => p.set("status", e.target.value), true)}>
+    <div className={styles.page}>
+      <div className={styles.toolbar}>
+        <form className={styles.search} onSubmit={(e) => { e.preventDefault(); submit(); }}>
+          <input
+            value={text}
+            onChange={(e) => setText(e.target.value)}
+            placeholder={appStatus?.ai ? 'Search, or ask: "unpaid house bills this year"' : 'Search text, e.g. brake "kingsway auto" -oil'}
+            aria-label="Search documents"
+          />
+          {interpreting && <span className={cx(ui.small, ui.muted, ui.pulse)}>Thinking…</span>}
+        </form>
+        <button className={styles.filterToggle} onClick={() => setShowFilters((v) => !v)} aria-expanded={showFilters}>
+          Filters{filterCount ? ` (${filterCount})` : ""}
+        </button>
+        <div className={cx(styles.chips, showFilters && styles.chipsOpen)}>
+          {components.map((k) => (
+            <span key={k} className={cx(ui.chip, styles.on)}>
+              <Dot color={catalog.find((c) => c.key === k)?.color} />{catalog.find((c) => c.key === k)?.name ?? k}
+              <button className={styles.x} onClick={() => removeComponent(k)} aria-label="Remove filter">✕</button>
+            </span>
+          ))}
+          {where.map((w, i) => (
+            <span key={w} className={cx(ui.chip, styles.on)}>
+              {describeWhere(w, catalog, objects)}
+              <button className={styles.x} onClick={() => update((p) => { p.delete("w"); where.filter((_, j) => j !== i).forEach((x) => p.append("w", x)); })} aria-label="Remove filter">✕</button>
+            </span>
+          ))}
+          {ref && (
+            <span className={cx(ui.chip, styles.on)}>
+              Linked: {objects.find((o) => o.id === ref)?.title ?? "an object"}
+              <button className={styles.x} onClick={() => update((p) => p.delete("ref"))} aria-label="Remove filter">✕</button>
+            </span>
+          )}
+          {(from || to) && (
+            <span className={cx(ui.chip, styles.on)}>
+              {dateLabel}
+              <button className={styles.x} onClick={() => update((p) => { p.delete("from"); p.delete("to"); })} aria-label="Remove filter">✕</button>
+            </span>
+          )}
+          <details className={ui.menuWrap} ref={filterMenu}>
+            <summary className={cx(ui.chip, styles.add)}>+ Filter</summary>
+            <div className={cx(ui.menu, styles.filterMenu)}>
+              <div className={styles.menuSection}>
+                <div className={styles.menuLabel}>Has component</div>
+                <div className={ui.badges}>
+                  {catalog.filter((c) => (c.documentUsage ?? 1) > 0 && !components.includes(c.key)).map((c) => (
+                    <button key={c.key} className={cx(ui.chip, styles.pickChip)} onClick={() => update((p) => p.append("c", c.key))}>
+                      <Dot color={c.color} />{c.name}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div className={styles.menuSection}>
+                <div className={styles.menuLabel}>Linked to</div>
+                <select className={ui.compact} value={ref} onChange={(e) => update((p) => (e.target.value ? p.set("ref", e.target.value) : p.delete("ref")))}>
+                  <option value="">Any object</option>
+                  {objects.map((o) => <option key={o.id} value={o.id}>{o.title}</option>)}
+                </select>
+              </div>
+              <div className={styles.menuSection}>
+                <div className={styles.menuLabel}>Document date</div>
+                <div className={ui.badges}>
+                  {datePresets.map(([label, f, t]) => (
+                    <button key={label} className={cx(ui.chip, styles.pickChip)} onClick={() => update((p) => { p.set("from", f); if (t) p.set("to", t); else p.delete("to"); })}>{label}</button>
+                  ))}
+                </div>
+                <div className={styles.dateRow}>
+                  <DateInput className={ui.compact} value={from || null} aria-label="From" placeholder="From" onChange={(v) => update((p) => (v ? p.set("from", v) : p.delete("from")))} />
+                  <span className={ui.muted}>–</span>
+                  <DateInput className={ui.compact} value={to || null} aria-label="To" placeholder="To" onChange={(v) => update((p) => (v ? p.set("to", v) : p.delete("to")))} />
+                </div>
+              </div>
+              <div className={styles.menuSection}>
+                <div className={styles.menuLabel}>Field</div>
+                <FieldFilterBuilder catalog={catalog} objects={objects} onAdd={(w) => { update((p) => p.append("w", w)); filterMenu.current?.removeAttribute("open"); }} />
+              </div>
+            </div>
+          </details>
+          {hasFilters && <button className={cx(ui.link, ui.small)} onClick={() => { setText(""); setParams(new URLSearchParams()); }}>Clear</button>}
+        </div>
+        <span className={ui.spacer} />
+        <select className={ui.compact} value={status} onChange={(e) => update((p) => p.set("status", e.target.value), true)} aria-label="Which documents">
           <option value="filed">Filed</option>
           <option value="inbox">In inbox</option>
           <option value="all">All</option>
         </select>
-        <select value={sort} onChange={(e) => update((p) => p.set("sort", e.target.value), true)}>
+        <select className={ui.compact} value={sort} onChange={(e) => update((p) => p.set("sort", e.target.value), true)} aria-label="Sort">
           {q && <option value="relevance">Best match</option>}
-          <option value="date">Document date</option>
+          <option value="date">Newest first</option>
           <option value="added">Recently added</option>
           <option value="title">Title</option>
         </select>
-        <button className={ui.primary}>Search</button>
-        {appStatus?.ai && (
-          <button type="button" disabled={interpreting || !text.trim()} onClick={interpret} title="Let AI turn your question into filters">
-            {interpreting ? "Thinking…" : "Ask AI"}
-          </button>
-        )}
-      </form>
-
-      {explanation && (
-        <div className={ui.aiNote}>
-          <div className={ui.aiNoteHead}>AI interpreted your question as</div>
-          <p>{explanation}</p>
-          {warnings.length > 0 && <p className={cx(ui.small, ui.muted)}>{warnings.join(" ")}</p>}
-          <p className={cx(ui.small, ui.muted)}>The filters below are what's actually applied; change any of them to refine.</p>
-        </div>
-      )}
-
-      <button className={styles.filterToggle} onClick={() => setShowFilters((v) => !v)} aria-expanded={showFilters}>
-        {showFilters ? "Hide filters" : `Filters${filterCount ? ` (${filterCount})` : ""}`}
-      </button>
-
-      {agg && aggResult && <AggregatePanel result={aggResult} onRemove={() => update((p) => p.delete("agg"), true)} />}
-
-      <div className={cx(styles.filterPanel, showFilters && styles.filterPanelOpen)}>
-      <div className={styles.filters}>
-        <span className={cx(ui.muted, ui.small)}>Has:</span>
-        {catalog.filter((c) => (c.documentUsage ?? 1) > 0 || components.includes(c.key)).map((c) => {
-          const on = components.includes(c.key);
-          return (
-            <button
-              key={c.key}
-              className={cx(styles.chip, on && styles.chipOn)}
-              style={on ? { background: c.color, borderColor: c.color } : { borderColor: c.color }}
-              onClick={() => update((p) => {
-                p.delete("c");
-                (on ? components.filter((k) => k !== c.key) : [...components, c.key]).forEach((k) => p.append("c", k));
-              })}
-            >
-              {c.name}
-            </button>
-          );
-        })}
-        <select value={ref} onChange={(e) => update((p) => (e.target.value ? p.set("ref", e.target.value) : p.delete("ref")))}>
-          <option value="">Linked to any object</option>
-          {objects.map((o) => <option key={o.id} value={o.id}>Linked to {o.title}</option>)}
-        </select>
-        <label className={cx(ui.inline, ui.small, ui.muted)}>
-          From <input type="date" value={from} onChange={(e) => update((p) => (e.target.value ? p.set("from", e.target.value) : p.delete("from")))} />
-        </label>
-        <label className={cx(ui.inline, ui.small, ui.muted)}>
-          to <input type="date" value={to} onChange={(e) => update((p) => (e.target.value ? p.set("to", e.target.value) : p.delete("to")))} />
-        </label>
-        {hasFilters && <button className={cx(ui.link, ui.small)} onClick={() => { setText(""); setParams(new URLSearchParams()); }}>Clear all</button>}
-      </div>
-
-      <FieldFilters
-        catalog={catalog}
-        objects={objects}
-        where={where}
-        onChange={(w) => update((p) => { p.delete("w"); w.forEach((x) => p.append("w", x)); })}
-      />
-      </div>
-
-      <p className={cx(ui.muted, ui.small)}>
-        {loading ? "Searching…" : `${total} document${total === 1 ? "" : "s"}`}
-        {q && appStatus?.semantic.available && (
-          <label className={cx(ui.inline, styles.meaningToggle)} title="Also find documents that match by meaning, not just by words">
-            <input type="checkbox" checked={semantic} onChange={(e) => update((p) => (e.target.checked ? p.delete("sem") : p.set("sem", "0")), true)} />
-            match by meaning{q && semantic && !usedSemantic && !loading ? " (unavailable right now)" : ""}
-          </label>
-        )}
-      </p>
-      <div className={styles.viewBar}>
         <div className={styles.segmented} role="group" aria-label="View">
-          <button className={cx(view === "cards" && styles.segOn)} onClick={() => setView("cards")}>Cards</button>
-          <button className={cx(view === "table" && styles.segOn)} onClick={() => setView("table")}>Table</button>
+          <button className={cx(ui.compact, view === "table" && styles.segOn)} onClick={() => setView("table")}>Table</button>
+          <button className={cx(ui.compact, view === "cards" && styles.segOn)} onClick={() => setView("cards")}>Cards</button>
         </div>
         {view === "table" && (
-          <details className={styles.columnsMenu}>
+          <details className={ui.menuWrap}>
             <summary className={cx(ui.button, ui.compact)}>Columns</summary>
-            <div className={styles.columnsList}>
+            <div className={cx(ui.menu, styles.columnsList)}>
               <button className={cx(ui.link, ui.small)} onClick={() => setPicked(null)} disabled={picked === null}>Automatic (from the results)</button>
               {catalog.filter((c) => c.fields.some((f) => f.type !== "longtext")).map((c) => (
                 <fieldset key={c.key} className={styles.columnGroup}>
@@ -288,35 +362,87 @@ export function DocumentsPage() {
           </details>
         )}
         <button className={ui.compact} disabled={exporting || !total} onClick={exportCsv} title="Every matching document, with the table's columns">
-          {exporting ? "Exporting…" : "Export CSV"}
+          {exporting ? "Exporting…" : "CSV"}
         </button>
-        <span className={ui.spacer} />
-        <Link className={ui.small} to="/trash">Trash</Link>
       </div>
-      {view === "table" ? (
-        <DocumentTable items={items} columns={columns} catalog={catalog} objects={objects} />
-      ) : (
-      <div className={styles.grid}>
-        {items.map((d) => (
-          <Link key={d.id} to={`/documents/${d.id}`} className={styles.card}>
-            {d.hasThumb ? <img className={styles.cardThumb} src={thumbUrl(d.id)} alt="" loading="lazy" /> : <div className={cx(ui.thumbPlaceholder, ui.thumbPlaceholderLarge)}>{d.mimeType.split("/")[1]}</div>}
-            <div className={styles.cardBody}>
-              <div className={styles.cardTitle}>{d.title}</div>
-              <div className={cx(ui.muted, ui.small)}>{d.documentDate ?? "no date"}</div>
-              <div className={ui.badges}>
-                {d.components.map((k, i) => {
-                  const c = catalog.find((x) => x.key === k);
-                  return <span key={i} className={ui.badge} style={{ background: c?.color }}>{c?.name ?? k}</span>;
-                })}
-              </div>
-              {d.match === "meaning" && <div className={cx(styles.matchNote, ui.small)}>Similar meaning; the words don't appear</div>}
-              {d.snippet && <div className={styles.snippet} dangerouslySetInnerHTML={{ __html: sanitizeSnippet(d.snippet) }} />}
-            </div>
-          </Link>
-        ))}
-      </div>
+
+      {explanation && (
+        <div className={styles.explain}>
+          <span className={ui.aiMark}>AI</span>
+          <span>Read as: {explanation}{warnings.length > 0 && <span className={ui.muted}> {warnings.join(" ")}</span>}</span>
+          <span className={ui.spacer} />
+          <button className={cx(ui.link, ui.small)} onClick={() => { const p = new URLSearchParams(); p.set("q", text); setParams(p); }}>Search the words instead</button>
+        </div>
       )}
-      {items.length < total && <button onClick={loadMore}>Load more</button>}
+
+      {agg && aggResult && <AggregatePanel result={aggResult} onRemove={() => update((p) => p.delete("agg"), true)} />}
+
+      <div className={cx(styles.body, view === "table" && peekId && !isPhone && styles.withPeek)}>
+        <div className={styles.results}>
+          <p className={cx(ui.muted, ui.small, styles.count)}>
+            {loading ? "Searching…" : `${total} document${total === 1 ? "" : "s"}`}
+            {q && appStatus?.semantic.available && (
+              <label className={cx(ui.inline, styles.meaningToggle)} title="Also find documents that match by meaning, not just by words">
+                <input type="checkbox" checked={semantic} onChange={(e) => update((p) => (e.target.checked ? p.delete("sem") : p.set("sem", "0")), true)} />
+                match by meaning{q && semantic && !usedSemantic && !loading ? " (unavailable right now)" : ""}
+              </label>
+            )}
+          </p>
+          {view === "table" ? (
+            <DocumentTable
+              items={items}
+              columns={columns}
+              catalog={catalog}
+              objects={objects}
+              total={total}
+              groupByYear={sort === "date"}
+              selectedId={peekId}
+              onSelect={isPhone ? undefined : (id) => setPeekId(id === peekId ? null : id)}
+            />
+          ) : (
+            <div className={styles.grid}>
+              {items.map((d) => (
+                <Link key={d.id} to={`/documents/${d.id}`} className={styles.card}>
+                  {d.hasThumb ? <img className={styles.cardThumb} src={thumbUrl(d.id)} alt="" loading="lazy" /> : <div className={cx(ui.thumbPlaceholder, ui.thumbPlaceholderLarge)}>{d.mimeType.split("/")[1]}</div>}
+                  <div className={styles.cardBody}>
+                    <div className={styles.cardTitle}>{d.title}</div>
+                    <div className={cx(ui.muted, ui.small)}>{d.documentDate ?? "no date"}</div>
+                    <div className={ui.badges}>
+                      {d.components.map((k, i) => <ComponentChip key={i} componentKey={k} catalog={catalog} />)}
+                    </div>
+                    {d.match === "meaning" && <div className={cx(styles.matchNote, ui.small)}>Similar meaning; the words don't appear</div>}
+                    {d.snippet && <div className={styles.snippet} dangerouslySetInnerHTML={{ __html: sanitizeSnippet(d.snippet) }} />}
+                  </div>
+                </Link>
+              ))}
+            </div>
+          )}
+          {items.length < total && <button className={styles.more} onClick={loadMore}>Load more</button>}
+        </div>
+        {view === "table" && peekId && !isPhone && (
+          <aside className={styles.peek} aria-label="Selected document">
+            {peek ? (
+              <>
+                <div className={styles.peekThumb}>
+                  {peek.hasThumb ? <img src={thumbUrl(peek.id)} alt="" /> : <span className={cx(ui.muted, ui.small)}>No preview</span>}
+                </div>
+                <div className={styles.peekHead}>
+                  <div className={styles.peekTitle}>{peek.current.title}</div>
+                  <div className={cx(ui.small, ui.muted)}>{peek.current.documentDate ?? "No date"} · {peek.originalFilename}</div>
+                </div>
+                <div className={styles.peekBody}>
+                  <DraftView components={peek.current.components} catalog={catalog} objects={objects} onSet={quickSet} />
+                </div>
+                <div className={styles.peekActions}>
+                  <Link className={cx(ui.button, ui.compact, ui.primary)} to={`/documents/${peek.id}`}>Open</Link>
+                  <button className={ui.compact} onClick={() => setPeekId(null)}>Close</button>
+                  <span className={cx(ui.small, ui.muted)}>↑↓ to move · Enter to open</span>
+                </div>
+              </>
+            ) : <p className={cx(ui.muted, ui.pad)}>Loading…</p>}
+          </aside>
+        )}
+      </div>
     </div>
   );
 }
@@ -349,7 +475,22 @@ function AggregatePanel({ result, onRemove }: { result: AggregateResult; onRemov
   );
 }
 
-function FieldFilters(props: { where: string[]; onChange: (w: string[]) => void; catalog: ComponentDef[]; objects: ObjectSummary[] }) {
+/** "Invoice › Total ≥ 100" for a where-filter string "invoice.total:gte:100". */
+function describeWhere(w: string, catalog: ComponentDef[], objects: ObjectSummary[]): string {
+  const m = /^([^.]+)\.([^:]+):([^:]+)(?::(.*))?$/s.exec(w);
+  if (!m) return w;
+  const c = catalog.find((x) => x.key === m[1]);
+  const f = c?.fields.find((x) => x.key === m[2]);
+  const opLabel = f ? opsFor(f.type).find(([o]) => o === m[3])?.[1] ?? m[3] : m[3];
+  const v =
+    f?.type === "ref" ? objects.find((o) => o.id === m[4])?.title ?? m[4] :
+    f?.type === "boolean" ? (m[4] === "true" ? "Yes" : m[4] === "false" ? "No" : m[4]) :
+    m[4];
+  return `${f ? f.label : `${m[1]}.${m[2]}`} ${opLabel} ${v ?? ""}`.trim();
+}
+
+/** Builds one field filter: field, operator, value. */
+function FieldFilterBuilder(props: { onAdd: (w: string) => void; catalog: ComponentDef[]; objects: ObjectSummary[] }) {
   const { catalog, objects } = props;
   const fields = catalog.flatMap((c) => c.fields.map((f) => ({ c, f, path: `${c.key}.${f.key}` })));
   const [path, setPath] = useState("");
@@ -357,26 +498,11 @@ function FieldFilters(props: { where: string[]; onChange: (w: string[]) => void;
   const [op, setOp] = useState("");
   const [val, setVal] = useState("");
   const ops = sel ? opsFor(sel.f.type) : [];
-  const describe = (w: string) => {
-    const m = /^([^.]+)\.([^:]+):([^:]+)(?::(.*))?$/s.exec(w);
-    if (!m) return w;
-    const x = fields.find((y) => y.path === `${m[1]}.${m[2]}`);
-    const opLabel = x ? opsFor(x.f.type).find(([o]) => o === m[3])?.[1] ?? m[3] : m[3];
-    const v =
-      x?.f.type === "ref" ? objects.find((o) => o.id === m[4])?.title ?? m[4] :
-      x?.f.type === "boolean" ? (m[4] === "true" ? "Yes" : m[4] === "false" ? "No" : m[4]) :
-      m[4];
-    return `${x ? `${x.c.name} › ${x.f.label}` : `${m[1]}.${m[2]}`} ${opLabel} ${v ?? ""}`;
-  };
+  const o = op || ops[0]?.[0];
   return (
-    <div className={styles.filters}>
-      {props.where.map((w, i) => (
-        <span key={i} className={cx(styles.chip, styles.chipFilter)}>
-          {describe(w)} <button className={ui.icon} onClick={() => props.onChange(props.where.filter((_, j) => j !== i))}>✕</button>
-        </span>
-      ))}
-      <select value={path} onChange={(e) => { setPath(e.target.value); setOp(""); setVal(""); }}>
-        <option value="">+ Field filter…</option>
+    <div className={styles.builder}>
+      <select className={ui.compact} value={path} onChange={(e) => { setPath(e.target.value); setOp(""); setVal(""); }} aria-label="Field">
+        <option value="">Choose a field…</option>
         {catalog.filter((c) => c.fields.length).map((c) => (
           <optgroup key={c.key} label={c.name}>
             {c.fields.map((f) => <option key={f.key} value={`${c.key}.${f.key}`}>{f.label}</option>)}
@@ -385,36 +511,27 @@ function FieldFilters(props: { where: string[]; onChange: (w: string[]) => void;
       </select>
       {sel && (
         <>
-          <select value={op || ops[0][0]} onChange={(e) => setOp(e.target.value)}>
-            {ops.map(([o, l]) => <option key={o} value={o}>{l}</option>)}
+          <select className={ui.compact} value={o} onChange={(e) => setOp(e.target.value)} aria-label="Condition">
+            {ops.map(([x, l]) => <option key={x} value={x}>{l}</option>)}
           </select>
-          {!["set", "empty"].includes(op || ops[0][0]) && (
+          {!["set", "empty"].includes(o) && (
             sel.f.type === "boolean" ? (
-              <select value={val} onChange={(e) => setVal(e.target.value)}><option value="">—</option><option value="true">Yes</option><option value="false">No</option></select>
+              <select className={ui.compact} value={val} onChange={(e) => setVal(e.target.value)} aria-label="Value"><option value="">—</option><option value="true">Yes</option><option value="false">No</option></select>
             ) : sel.f.type === "ref" ? (
-              <select value={val} onChange={(e) => setVal(e.target.value)}>
+              <select className={ui.compact} value={val} onChange={(e) => setVal(e.target.value)} aria-label="Value">
                 <option value="">—</option>
-                {objects.map((o) => <option key={o.id} value={o.id}>{o.title}</option>)}
+                {objects.map((x) => <option key={x.id} value={x.id}>{x.title}</option>)}
               </select>
             ) : sel.f.type === "select" ? (
-              <select value={val} onChange={(e) => setVal(e.target.value)}>
+              <select className={ui.compact} value={val} onChange={(e) => setVal(e.target.value)} aria-label="Value">
                 <option value="">—</option>
                 {(sel.f.options.choices ?? []).map((c) => <option key={c}>{c}</option>)}
               </select>
             ) : (
-              <input type={sel.f.type === "date" ? "date" : ["number", "money"].includes(sel.f.type) ? "number" : "text"} value={val} onChange={(e) => setVal(e.target.value)} />
+              <input className={ui.compact} placeholder={sel.f.type === "date" ? "YYYY-MM-DD" : "Value"} value={val} onChange={(e) => setVal(e.target.value)} aria-label="Value" />
             )
           )}
-          <button
-            className={ui.compact}
-            onClick={() => {
-              const o = op || ops[0][0];
-              props.onChange([...props.where, ["set", "empty"].includes(o) ? `${path}:${o}` : `${path}:${o}:${val}`]);
-              setPath("");
-            }}
-          >
-            Add
-          </button>
+          <button className={cx(ui.compact, ui.primary)} onClick={() => { props.onAdd(["set", "empty"].includes(o) ? `${path}:${o}` : `${path}:${o}:${val}`); setPath(""); }}>Add</button>
         </>
       )}
     </div>

@@ -1,11 +1,14 @@
 /* Fills .main exactly; preview and editor scroll independently. */
-.page { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr) minmax(400px, 560px); grid-template-rows: minmax(0, 1fr); }
+.page { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr) minmax(400px, 520px); grid-template-rows: minmax(0, 1fr); }
+/* Text files need a reading width, not half the screen. */
+.textDoc { grid-template-columns: minmax(0, 1fr) minmax(400px, 1fr); }
 .left { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
-.right { border-left: 1px solid var(--border); background: var(--panel); padding: 12px 16px; overflow-y: auto; display: flex; flex-direction: column; gap: 10px; }
-.tabs { display: flex; gap: 4px; padding: 6px 8px; border-bottom: 1px solid var(--border); background: var(--panel); align-items: center; }
-.tabs button { border: none; background: none; }
+.right { border-left: 1px solid var(--border); background: var(--panel); padding: 10px 14px; overflow-y: auto; display: flex; flex-direction: column; gap: 10px; }
+.tabs { display: flex; gap: 2px; padding: 4px 8px; border-bottom: 1px solid var(--border); background: var(--panel); align-items: center; }
+.tabs button { border-color: transparent; background: none; }
 .tabs .tabOn { font-weight: 600; background: var(--bg); }
 .tabs a { margin-left: 10px; font-size: 12px; }
+@media (max-width: 1000px) { .textDoc { grid-template-columns: 1fr; } }
 @media (max-width: 1000px) {
   .page { flex: none; grid-template-columns: 1fr; grid-template-rows: none; }
   /* The preview scrolls inside a fixed-height box so the details are reachable below it. */
@@ -18,12 +21,3 @@
 }
 .head { display: flex; align-items: flex-start; gap: 8px; }
 .title { margin: 0 0 2px; font-size: 18px; }
-.more { position: relative; }
-.more > summary { list-style: none; }
-.more > summary::-webkit-details-marker { display: none; }
-.menu {
-  position: absolute; right: 0; top: calc(100% + 4px); z-index: 6; min-width: 160px;
-  display: flex; flex-direction: column; gap: 4px; padding: 6px;
-  background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: 0 6px 20px rgb(0 0 0 / 0.15);
-}
-.menu > button { text-align: left; }

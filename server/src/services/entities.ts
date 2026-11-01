@@ -119,6 +119,14 @@ export async function applyDraft(tx: Tx, entityId: string, input: Draft): Promis
   for (const u of draft.objectUpdates ?? []) {
     await updateComponents(tx, u.objectId, u.components, catalog, refMap);
   }
+  // Remember which document each object detail came from.
+  if (entity.kind === "document") {
+    const sourced = [
+      ...(draft.newObjects ?? []).map((o) => ({ objectId: refMap.get(`new:${o.tempId}`)!, components: o.components })),
+      ...(draft.objectUpdates ?? []),
+    ];
+    for (const s of sourced) await recordSources(tx, s.objectId, s.components, entityId, catalog, refMap);
+  }
 
   // 4. The entity itself.
   await writeComponents(tx, entityId, draft.components, catalog, refMap);
@@ -135,6 +143,21 @@ export async function applyDraft(tx: Tx, entityId: string, input: Draft): Promis
   }
 
   return { createdComponents, createdObjects: Object.fromEntries(refMap) };
+}
+
+async function recordSources(tx: Tx, objectId: string, comps: DraftComponent[], documentId: string, catalog: Map<string, ComponentDef>, refMap: Map<string, string>) {
+  for (const c of comps) {
+    const def = catalog.get(c.component);
+    for (const f of def?.fields ?? []) {
+      let v = normalizeDraftValue(f, c.values?.[f.key]);
+      if (v === undefined || v === null) continue;
+      if (f.type === "ref") v = refMap.get(v as string) ?? v;
+      await tx`
+        insert into object_field_source (object_id, component, field, document_id, value)
+        values (${objectId}, ${c.component}, ${f.key}, ${documentId}, ${tx.json(v as never)})
+        on conflict (object_id, component, field) do update set document_id = excluded.document_id, value = excluded.value, set_at = now()`;
+    }
+  }
 }
 
 function validateComponents(comps: DraftComponent[], catalog: Map<string, ComponentDef>, draft: Draft, errors: string[], where: string, partial = false) {

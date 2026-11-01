@@ -1,74 +1,142 @@
 /* Fills .main exactly; the row can't grow with its content, so each column scrolls on its own. */
-.page { flex: 1; min-height: 0; display: grid; grid-template-columns: 260px minmax(0, 1fr) minmax(380px, 520px); grid-template-rows: minmax(0, 1fr); }
+.page { flex: 1; min-height: 0; display: grid; grid-template-columns: 300px minmax(0, 1fr) minmax(400px, 460px); grid-template-rows: minmax(0, 1fr); }
+
+/* ---- list ---- */
 .list { border-right: 1px solid var(--border); overflow-y: auto; background: var(--panel); }
-.item { display: flex; gap: 10px; width: 100%; text-align: left; border: none; border-bottom: 1px solid var(--border); border-radius: 0; padding: 8px 10px; background: none; }
-.itemActive { background: var(--bg); box-shadow: inset 3px 0 var(--accent); }
-.thumb { width: 44px; height: 56px; object-fit: cover; object-position: top; border: 1px solid var(--border); border-radius: 3px; flex-shrink: 0; background: white; }
-.title { font-weight: 500; word-break: break-word; }
-.status { font-size: 11px; color: var(--muted); }
-.statusReady { color: #16a34a; }
-.statusFailed { color: var(--danger); }
-.preview { min-width: 0; min-height: 0; display: flex; }
-.previewEmpty { align-items: center; justify-content: center; color: var(--muted); }
-.editor { border-left: 1px solid var(--border); overflow-y: auto; padding: 12px 16px; background: var(--panel); }
-/* Only shown on phones, where the list and the document are separate screens. */
-.back { display: none; }
-@media (max-width: 1000px) {
-  .page { flex: none; grid-template-columns: 1fr; grid-template-rows: none; }
-  .list { max-height: 30vh; }
-  /* The preview scrolls inside a fixed-height box so the editor is reachable below it. */
-  .preview { height: 65dvh; }
-  /* Not a scroll container here, so the File bar sticks to the page's scroll instead. */
-  .editor { border-left: none; border-top: 1px solid var(--border); overflow: visible; }
+.groupHead { position: sticky; top: 0; z-index: 1; background: var(--panel); min-height: 32px; }
+.groupCount { font-family: var(--font-mono); font-weight: 500; }
+.groupAction { text-transform: none; letter-spacing: 0; font-weight: 500; }
+.row { display: grid; grid-template-columns: 30px minmax(0, 1fr); border-bottom: 1px solid var(--border-soft); }
+.row:hover { background: var(--sunk); }
+.rowActive, .rowActive:hover { background: var(--accent-soft); box-shadow: inset 3px 0 var(--accent); }
+.pick { margin: 9px 0 0 11px; width: 14px; height: 14px; }
+.rowMain {
+  display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 1px 8px; align-items: baseline;
+  border: none; background: none; border-radius: 0; text-align: left; padding: 6px 12px 7px 0; min-height: 0; color: var(--text); white-space: normal;
 }
-/* Phones: "/" is the list, "/inbox/:id" is the document. */
-@media (max-width: 700px) {
-  .list { max-height: none; border-right: none; }
-  .item { padding: 10px 12px; }
-  .pageOpen .list { display: none; }
-  /* On the list screen nothing is open, so don't mark the auto-selected item. */
-  .page:not(.pageOpen) .itemActive { background: none; box-shadow: none; }
-  .page:not(.pageOpen) > :not(.list) { display: none; }
-  .back { display: flex; align-items: center; gap: 10px; padding: 4px 12px; background: var(--panel); border-bottom: 1px solid var(--border); min-width: 0; }
-  .back > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .preview { height: 60dvh; }
-}
-.revise { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; }
-.reviseActions { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
-.feedbackList { margin: 0; padding-left: 18px; }
-.editorFieldset { border: none; margin: 0; padding: 0; min-width: 0; }
-.editorFieldset:disabled { opacity: 0.6; }
-.itemBody { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
-.itemBadges { margin: 2px 0; }
+.rowTitle { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.rowDate { font-size: 12px; color: var(--muted); white-space: nowrap; }
+.rowSub { grid-column: 1 / -1; display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-2); min-width: 0; white-space: nowrap; }
+.ellipsis { overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.amount { font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.rowStatus { grid-column: 1 / -1; font-size: 11.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.statusAsk { color: var(--danger); font-weight: 500; }
+.statusNew { color: var(--new); }
+.statusChange { color: var(--change); }
+.statusMuted { color: var(--muted); }
 .edited { color: var(--accent); }
+
+/* ---- preview ---- */
+.preview { min-width: 0; min-height: 0; display: flex; position: relative; }
+.previewEmpty { align-items: center; justify-content: center; color: var(--muted); grid-column: 2 / 4; }
+.previewToggle { display: none; }
+
+/* ---- review panel ---- */
+.editor { border-left: 1px solid var(--border); background: var(--panel); display: flex; flex-direction: column; min-height: 0; }
+.editorBody { flex: 1; min-height: 0; overflow-y: auto; padding: 10px 14px 14px; display: flex; flex-direction: column; gap: 10px; }
+.head { display: flex; flex-direction: column; gap: 1px; }
+.title { font-size: 16px; font-weight: 600; min-height: 30px; }
+.titleRevised:not(:focus) { background: var(--revised-soft); }
+.meta { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); min-width: 0; }
+.meta input { font-size: 12px; min-height: 22px; }
+.dateBox { width: 102px; flex-shrink: 0; }
+.dateInferred input { text-decoration: underline dotted var(--infer-line) 2px; text-underline-offset: 3px; }
+.dateYou input:not(:focus) { background: var(--accent-soft); }
+.metaFile { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.why { display: flex; gap: 8px; font-size: 12.5px; color: var(--text-2); }
+.why p { margin: 0 0 2px; }
+.why > span { margin-top: 1px; height: 16px; }
+.plainList { margin: 2px 0 0; padding-left: 16px; }
 .alertText { margin: 0 0 4px; }
 .alertActions { display: flex; gap: 8px; margin-top: 6px; }
-/* File stays in reach however long the form gets. */
-.actionBar {
-  position: sticky; bottom: 0; z-index: 2;
-  display: flex; gap: 8px; align-items: center;
-  margin: 14px -16px -12px; padding: 10px 16px;
-  background: var(--panel); border-top: 1px solid var(--border);
-}
+.editorFieldset { border: none; margin: 0; padding: 0; min-width: 0; }
+.editorFieldset:disabled { opacity: 0.6; }
+
+/* a question for you, above the details */
+.decision { border: 1px solid color-mix(in srgb, var(--change) 45%, var(--border)); background: color-mix(in srgb, var(--change-soft) 60%, var(--panel)); border-radius: var(--radius); padding: 8px 10px; display: flex; flex-direction: column; gap: 6px; }
+.question { font-weight: 600; display: flex; gap: 6px; align-items: baseline; }
+.qmark { font: 700 11px/16px var(--font-mono); width: 16px; height: 16px; border-radius: 50%; background: var(--change); color: var(--panel); text-align: center; flex-shrink: 0; }
+.compare { display: grid; grid-template-columns: minmax(64px, auto) 1fr 1fr; font-size: 12px; background: var(--panel); border: 1px solid var(--border); border-radius: 4px; }
+.compare > span, .compareRow > span { padding: 3px 7px; border-bottom: 1px solid var(--border-soft); overflow-wrap: anywhere; }
+.compareRow { display: contents; }
+.compareRow:last-child > span { border-bottom: none; }
+.compareHead { font-weight: 600; color: var(--muted); font-size: 11px; }
+.match { color: var(--new); }
+.decisionActions { display: flex; gap: 6px; flex-wrap: wrap; }
+
+/* footer: change request and File */
+.foot { border-top: 1px solid var(--border); padding: 8px 14px 10px; display: flex; flex-direction: column; gap: 8px; background: var(--panel); }
+.revise { display: flex; flex-direction: column; gap: 4px; }
+.reviseRow { display: flex; align-items: center; gap: 6px; }
+.reviseRow input { flex: 1; min-width: 0; }
+.fileRow { display: flex; gap: 6px; align-items: center; }
+.fileBtn { min-height: 30px; padding: 0 12px; }
+.askBtn { display: none; }
 .more { position: relative; }
-.more > summary { list-style: none; padding: 6px 10px; }
-.more > summary::-webkit-details-marker { display: none; }
-.menu {
-  position: absolute; right: 0; bottom: calc(100% + 4px); z-index: 3;
-  display: flex; flex-direction: column; gap: 4px; min-width: 150px; padding: 6px;
-  background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius);
-  box-shadow: 0 6px 20px rgb(0 0 0 / 0.15);
+.menuUp { top: auto; bottom: calc(100% + 4px); }
+
+/* the batch confirm replaces the review */
+.batch { grid-column: 2 / 4; background: var(--panel); border-left: 1px solid var(--border); display: flex; flex-direction: column; min-height: 0; }
+.batchHead, .batchList, .batchNote, .batchActions { max-width: 900px; width: 100%; }
+.batchHead { padding: 12px 16px 8px; border-bottom: 1px solid var(--border-soft); }
+.batchHead h3 { margin: 0 0 2px; font-size: 15px; }
+.batchHead p { margin: 0; }
+.batchList { overflow-y: auto; flex: 1 1 auto; min-height: 0; padding: 0 16px; }
+.batchRow { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 8px; align-items: start; padding: 7px 0; border-bottom: 1px solid var(--border-soft); }
+.batchMain { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.batchTitle { font-weight: 600; }
+.batchEffect { font-size: 12px; display: flex; gap: 6px; align-items: center; }
+.batchNote { margin: 0; padding: 8px 16px 0; }
+.batchActions { display: flex; gap: 6px; padding: 10px 16px 12px; }
+
+/* Only shown on phones, where the list and the document are separate screens. */
+.back { display: none; }
+.backLink { font-weight: 500; }
+.stepBtn { padding: 0 6px; }
+
+@media (max-width: 1000px) {
+  .page { flex: none; grid-template-columns: 1fr; grid-template-rows: none; }
+  .list { max-height: 30vh; border-right: none; border-bottom: 1px solid var(--border); }
+  /* The preview scrolls inside a fixed-height box so the review is reachable below it. */
+  .preview { height: 60dvh; }
+  .previewEmpty, .batch { grid-column: auto; }
+  .batch { border-left: none; max-width: none; }
+  /* Not scroll containers here, so the footer sticks to the page's scroll instead. */
+  .editor { border-left: none; border-top: 1px solid var(--border); }
+  .editorBody { overflow: visible; }
+  .foot { position: sticky; bottom: 0; z-index: 2; }
 }
-.menu > button { text-align: left; }
+@media (max-width: 1000px) and (min-width: 701px) {
+  .page:not(.pageOpen) .list { max-height: 30vh; }
+}
+
+/* Phones: "/" is the list, "/inbox/:id" is the document. */
 @media (max-width: 700px) {
-  /* Sit on top of the bottom tab bar. */
-  .actionBar { bottom: calc(52px + env(safe-area-inset-bottom)); padding: 8px 16px; }
+  .list { max-height: none; border-bottom: none; }
+  .pageOpen .list { display: none; }
+  .page:not(.pageOpen) .rowActive { background: none; box-shadow: none; }
+  .page:not(.pageOpen) > :not(.list):not(.batch) { display: none; }
+  .pageOpen .batch { display: none; }
+  .back { display: flex; align-items: center; gap: 8px; padding: 0 10px; min-height: 40px; background: var(--panel); border-bottom: 1px solid var(--border); position: sticky; top: 0; z-index: 3; }
+  /* A strip of the page; "View page" opens it full screen. */
+  .preview { height: 26dvh; border-bottom: 1px solid var(--border); }
+  .previewOpen { position: fixed; inset: 0; bottom: calc(52px + env(safe-area-inset-bottom)); height: auto; z-index: 25; background: var(--canvas); padding-top: env(safe-area-inset-top); }
+  .previewToggle {
+    display: inline-flex; position: absolute; right: 8px; bottom: 8px; z-index: 4; min-height: 30px; font-size: 12px;
+    background: rgb(24 27 32 / .78); color: #fff; border: none;
+  }
+  .editorBody { padding: 8px 12px 12px; }
+  .foot { bottom: calc(52px + env(safe-area-inset-bottom)); padding: 8px 12px; }
+  .revise:not(.reviseOpen) { display: none; }
+  .askBtn { display: inline-flex; }
+  .fileBtn { flex: 1; min-height: 36px; }
+  .keysHint { display: none; }
+  /* Batch confirm: a sheet over the list. */
+  .batch { position: fixed; left: 0; right: 0; bottom: calc(52px + env(safe-area-inset-bottom)); max-height: 75dvh; z-index: 26; border-radius: 12px 12px 0 0; box-shadow: 0 -8px 30px rgb(0 0 0 / .2); border-top: 1px solid var(--border); }
+  .page:not(.pageConfirming) .batch { display: none; }
+  .pageConfirming .list { padding-bottom: 50dvh; }
+  .batchActions .fileBtn { flex: 1; }
 }
-@media (max-width: 700px), (pointer: coarse) {
+@media (pointer: coarse) {
   .keysHint { display: none; }
 }
-.itemRow { position: relative; }
-/* The checkbox sits over the thumbnail's corner so the row keeps its layout. */
-.pick { position: absolute; left: 6px; top: 6px; z-index: 1; margin: 0; width: 18px; height: 18px; }
-.batchBar { position: sticky; top: 0; z-index: 2; display: flex; align-items: center; gap: 8px; padding: 8px 10px; background: color-mix(in srgb, var(--accent) 10%, var(--panel)); border-bottom: 1px solid var(--border); }
-.batchHint { padding: 4px 10px; border-bottom: 1px solid var(--border); }
