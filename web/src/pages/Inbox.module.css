@@ -95,7 +95,8 @@
 .stepBtn { padding: 0 6px; }
 
 @media (max-width: 1000px) {
-  .page { flex: none; grid-template-columns: 1fr; grid-template-rows: none; }
+  /* minmax(0, …): a plain 1fr grows to its widest child (a zoomed page, a long file name) and pushes the screen sideways. */
+  .page { flex: none; grid-template-columns: minmax(0, 1fr); grid-template-rows: none; }
   .list { max-height: 30vh; border-right: none; border-bottom: 1px solid var(--border); }
   /* The preview scrolls inside a fixed-height box so the review is reachable below it. */
   .preview { height: 60dvh; }

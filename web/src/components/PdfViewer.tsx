@@ -9,8 +9,6 @@ import styles from "./PdfViewer.module.css";
 
 pdfjs.GlobalWorkerOptions.workerSrc = workerUrl;
 
-/** Gap around and between pages, in CSS pixels. Keep in sync with .pages padding/gap. */
-const GAP = 12;
 const ZOOM_STEPS = [0.5, 0.75, 1, 1.25, 1.5, 2, 3, 4];
 /** Mobile browsers refuse (or silently blank) canvases much above ~16M pixels. */
 const MAX_CANVAS_PIXELS = 12_000_000;
@@ -26,6 +24,7 @@ export default function PdfViewer({ url, highlight }: { url: string; highlight?:
   const scroller = useRef<HTMLDivElement>(null);
   const [pages, setPages] = useState<PageInfo[] | null>(null);
   const [error, setError] = useState<string | null>(null);
+  /** Room for pages: the scroller's width less the padding around them (--pdf-pad, none on phones). */
   const [width, setWidth] = useState(0);
   /** Multiplier on "fit to width". */
   const [zoom, setZoom] = useState(1);
@@ -60,7 +59,10 @@ export default function PdfViewer({ url, highlight }: { url: string; highlight?:
   useEffect(() => {
     const el = scroller.current;
     if (!el) return;
-    const ro = new ResizeObserver(() => setWidth(el.clientWidth));
+    const ro = new ResizeObserver(() => {
+      const pad = parseFloat(getComputedStyle(el).getPropertyValue("--pdf-pad")) || 0;
+      setWidth(el.clientWidth - 2 * pad);
+    });
     ro.observe(el);
     return () => ro.disconnect();
   }, []);
@@ -96,7 +98,7 @@ export default function PdfViewer({ url, highlight }: { url: string; highlight?:
   }, [highlight, drawn]);
 
   const widest = pages ? Math.max(...pages.map((p) => p.width)) : 1;
-  const fit = width > 0 ? Math.max(0.1, (width - 2 * GAP) / widest) : 0;
+  const fit = width > 0 ? Math.max(0.1, width / widest) : 0;
   const scale = fit * zoom;
   const stepZoom = (dir: 1 | -1) => {
     const i = ZOOM_STEPS.findIndex((z) => z >= zoom - 1e-6);
