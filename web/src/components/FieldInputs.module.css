@@ -1,0 +1,6 @@
+/* An input that reads as text until you point at it or edit it. */
+.quiet { border-color: transparent; background: transparent; padding: 0 5px; margin-left: -6px; width: calc(100% + 6px); min-width: 0; text-overflow: ellipsis; }
+.quiet:hover { border-color: var(--border); background: var(--panel); }
+.quiet:focus { background: var(--panel); }
+select.quiet { appearance: none; -webkit-appearance: none; cursor: pointer; }
+.bad, .bad:focus { border-color: var(--danger); outline-color: color-mix(in srgb, var(--danger) 30%, transparent); }

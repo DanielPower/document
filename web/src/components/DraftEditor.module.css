@@ -1,27 +1,55 @@
-.editor { display: flex; flex-direction: column; gap: 12px; }
-.componentList { display: flex; flex-direction: column; gap: 8px; }
-.componentCard { border: 1px solid var(--border); border-left: 4px solid; border-radius: 6px; padding: 8px 10px; background: var(--panel); }
-.componentCardHead { display: flex; align-items: center; gap: 6px; }
-.componentName { font-weight: 600; flex: 1; }
-.fieldGrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; margin-top: 6px; }
-.field input, .field select { width: 100%; }
-.fieldWide { grid-column: 1 / -1; }
+.editor { display: flex; flex-direction: column; gap: 10px; }
+.componentList { display: flex; flex-direction: column; gap: 10px; }
+.nested { gap: 6px; }
+.component { display: flex; flex-direction: column; }
+.fields { grid-template-columns: minmax(80px, 108px) minmax(0, 1fr); }
+.value { gap: 6px; }
+.input { flex: 0 1 auto; min-width: 0; max-width: 100%; }
+/* Inputs as wide as their text, so a marker sits next to the value it describes. */
+.input :is(input, select):not([role="combobox"]) { field-sizing: content; width: auto; min-width: 5ch; max-width: 100%; }
+.input textarea { width: 100%; }
+.input:only-child { flex: 1; }
 .req { color: var(--danger); margin-left: 2px; }
-.withSuffix { display: flex; align-items: center; gap: 4px; color: var(--text); font-size: 14px; }
-.withSuffix input { flex: 1; min-width: 0; }
-.suffix { font-size: 12px; color: var(--muted); }
-.addComponent { align-self: flex-start; color: var(--accent); }
-.proposed { border: 1px dashed #16a34a; border-radius: var(--radius); padding: 10px; display: flex; flex-direction: column; gap: 8px; }
-.proposedItem { display: flex; flex-direction: column; gap: 8px; align-items: flex-start; padding-bottom: 8px; border-bottom: 1px solid var(--border); }
-.proposedItem:last-child { border-bottom: none; }
-.proposedItem > * { width: 100%; }
-.proposedItem > button { width: auto; }
-.newObjectLink { align-self: flex-start; }
-.lookalike { display: flex; gap: 10px; align-items: center; justify-content: space-between; padding: 8px 10px; border-radius: 6px; background: var(--warn-bg); }
-.changes { display: flex; flex-direction: column; gap: 8px; }
-.change { border: 1px solid var(--border); border-radius: 6px; padding: 6px 10px; }
-.changeHead { display: flex; align-items: center; justify-content: space-between; font-size: 12px; color: var(--muted); }
-.changeBody { display: flex; align-items: center; gap: 8px; }
-.changeBody > .bare { flex: 1; min-width: 0; }
-.was { min-width: 60px; max-width: 40%; overflow-wrap: anywhere; }
-.bare { display: block; }
+.withSuffix { display: flex; align-items: center; gap: 4px; }
+.withSuffix > div:first-child:has([role="combobox"]) { flex: 1; min-width: 0; }
+.withSuffix input { flex: 0 1 auto; min-width: 5ch; }
+.suffix { font-size: 11.5px; color: var(--muted); }
+.empties { font-size: 12px; color: var(--muted); padding: 4px 0 0; }
+.addComponent { align-self: flex-start; color: var(--accent); border-style: dashed; }
+
+/* provenance markers: quiet, and only on values */
+.markNote { display: inline-flex; align-items: center; gap: 5px; min-width: 0; max-width: 55%; flex-shrink: 1; }
+.glyph { font: 600 10px/14px var(--font-mono); border-radius: 3px; padding: 0 3px; flex-shrink: 0; border: 1px solid; }
+.glyph_inferred { color: var(--infer); border-color: var(--infer-line); }
+.glyph_you { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 50%, var(--panel)); }
+.glyph_revised { color: var(--revised); border-color: color-mix(in srgb, var(--revised) 50%, var(--panel)); }
+.note { font-size: 11.5px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.markInferred .note { color: var(--infer); }
+.markInferred input, .markInferred select { text-decoration: underline dotted var(--infer-line) 2px; text-underline-offset: 3px; }
+.markYou input:not(:focus), .markYou select:not(:focus) { background: var(--accent-soft); }
+.markRevised input:not(:focus), .markRevised select:not(:focus) { background: var(--revised-soft); box-shadow: inset 0 -2px color-mix(in srgb, var(--revised) 60%, transparent); }
+
+/* "When you file": everything filing does besides filing the document */
+.effects { border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
+.effectsHead { background: var(--sunk); padding: 5px 10px; font-weight: 600; font-size: 12px; color: var(--text-2); border-bottom: 1px solid var(--border); }
+.effect { display: grid; grid-template-columns: 16px minmax(0, 1fr); gap: 0 6px; padding: 7px 10px; border-bottom: 1px solid var(--border-soft); }
+.effect:last-child { border-bottom: none; }
+.effectBody { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.sym { font: 700 13px/20px var(--font-mono); text-align: center; color: var(--muted); }
+.symNew { color: var(--new); }
+.symChange { color: var(--change); }
+.effectLine { display: flex; align-items: center; gap: 6px; min-height: 20px; flex-wrap: wrap; }
+.objectTitle { flex: 1; min-width: 120px; font-weight: 600; width: auto; margin-left: 0; }
+.effectActions { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+.sameAs { max-width: 100%; }
+.defEditor { border-top: 1px solid var(--border-soft); padding-top: 6px; }
+.newObjectLink { align-self: flex-start; padding: 6px 10px; }
+.changes { display: flex; flex-direction: column; }
+.change { display: grid; grid-template-columns: minmax(90px, auto) auto auto minmax(80px, 1fr) auto; gap: 6px; align-items: center; font-size: 12.5px; padding: 2px 0; }
+.changeLabel { color: var(--muted); }
+.was { color: var(--muted); text-decoration: line-through; overflow-wrap: anywhere; }
+.was em { text-decoration: none; display: inline-block; }
+@media (max-width: 700px) {
+  .change { grid-template-columns: auto auto minmax(0, 1fr) auto; }
+  .changeLabel { grid-column: 1 / -1; }
+}

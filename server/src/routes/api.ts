@@ -14,7 +14,7 @@ import { aggregateDocuments, searchDocuments, type SearchParams } from "../servi
 import { askQuestion, interpretQuestion } from "../services/ai-query.ts";
 import { refreshTitleChunk, semanticStatus } from "../services/embeddings.ts";
 import { isUuid } from "../services/values.ts";
-import type { DocumentDetail, DocumentStatus, ObjectDetail, ObjectSummary, Proposal } from "../shared/types.ts";
+import type { DocumentDetail, DocumentStatus, DraftValue, ObjectDetail, ObjectSummary, Proposal } from "../shared/types.ts";
 import { ComponentInputSchema, DraftSchema } from "./schemas.ts";
 
 const IdParams = z.object({ id: z.string().refine(isUuid, "invalid id") });
@@ -335,7 +335,16 @@ export async function apiRoutes(app: FastifyInstance) {
       join entity e on e.id = ci.entity_id and e.kind = 'object'
       where fv.value_ref = ${id} and e.id <> ${id}
       order by e.title`;
-    return { ...o, documentCount: n, components: current.components.map((c) => c.component), summary: "", current, linkedFrom: [...linkedFrom] };
+    // Where each detail came from, while it still holds the value that document set.
+    const sourceRows = await sql<{ component: string; field: string; document_id: string; title: string; value: DraftValue; set_at: string }[]>`
+      select s.component, s.field, s.document_id, e.title, s.value, s.set_at
+      from object_field_source s join entity e on e.id = s.document_id
+      join document d on d.entity_id = s.document_id and d.status <> 'trashed'
+      where s.object_id = ${id}`;
+    const sources = sourceRows
+      .filter((r) => current.components.some((c) => c.component === r.component && c.values[r.field] === r.value))
+      .map((r) => ({ component: r.component, field: r.field, documentId: r.document_id, documentTitle: r.title, setAt: r.set_at }));
+    return { ...o, documentCount: n, components: current.components.map((c) => c.component), summary: "", current, linkedFrom: [...linkedFrom], sources };
   });
 
   const ObjectBody = z.object({ draft: DraftSchema, notes: z.string().optional() });

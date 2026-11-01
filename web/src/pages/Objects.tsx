@@ -4,6 +4,7 @@ import { api, type DuplicateGroup } from "../api";
 import { cx } from "../cx";
 import { useAppData } from "../data";
 import ui from "../ui.module.css";
+import { ComponentDots } from "../components/Chip";
 import styles from "./Objects.module.css";
 
 export function ObjectsPage() {
@@ -26,14 +27,13 @@ export function ObjectsPage() {
       .map(([k, list]) => [k ? catalog.find((c) => c.key === k)?.name ?? k : "Other", list] as const);
   }, [shown, catalog]);
   return (
-    <div className={ui.page}>
-      <div className={ui.pageHead}>
-        <h2>Objects</h2>
-        <p className={ui.muted}>Things your documents are about: vehicles, properties, people, accounts. Details live here once, and documents link to them.</p>
-        <div className={ui.row}>
-          <input placeholder="Filter…" value={filter} onChange={(e) => setFilter(e.target.value)} />
-          <Link className={cx(ui.button, ui.primary)} to="/objects/new">New object</Link>
-        </div>
+    <div className={cx(ui.page, styles.page)}>
+      <div className={styles.toolbar}>
+        <h2 className={styles.heading}>Objects</h2>
+        <input placeholder="Filter…" value={filter} onChange={(e) => setFilter(e.target.value)} aria-label="Filter objects" />
+        <span className={cx(ui.small, ui.muted, styles.blurb)}>Things your documents are about. Details live here once, and documents link to them.</span>
+        <span className={ui.spacer} />
+        <Link className={cx(ui.button, ui.primary)} to="/objects/new">New object</Link>
       </div>
       {duplicates.length > 0 && (
         <div className={styles.duplicates}>
@@ -43,21 +43,14 @@ export function ObjectsPage() {
       )}
       {groups.map(([label, list]) => (
         <section key={label} className={styles.kind}>
-          <h3 className={styles.kindHead}>{label} <span className={cx(ui.muted, ui.small)}>{list.length}</span></h3>
+          <div className={ui.groupHead}>{label} <span className={styles.n}>{list.length}</span></div>
           <div className={ui.list}>
             {list.map((o) => (
-              <Link key={o.id} to={`/objects/${o.id}`} className={ui.listItem}>
-                <div>
-                  <div className={ui.listTitle}>{o.title}</div>
-                  <div className={cx(ui.muted, ui.small)}>{o.summary || "no details"}</div>
-                </div>
-                <div className={ui.badges}>
-                  {o.components.map((k, i) => {
-                    const c = catalog.find((x) => x.key === k);
-                    return <span key={i} className={ui.badge} style={{ background: c?.color }}>{c?.name ?? k}</span>;
-                  })}
-                </div>
-                <span className={cx(ui.muted, ui.small)}>{o.documentCount} doc{o.documentCount === 1 ? "" : "s"}</span>
+              <Link key={o.id} to={`/objects/${o.id}`} className={cx(ui.listItem, styles.row)}>
+                <span className={styles.title}>{o.title}</span>
+                <span className={cx(ui.small, ui.muted, styles.summary)}>{o.summary.replace(/^[^:]+:\s*/, "") || "no details"}</span>
+                <ComponentDots keys={o.components} catalog={catalog} />
+                <span className={cx(ui.small, ui.muted, styles.count)}>{o.documentCount} doc{o.documentCount === 1 ? "" : "s"}</span>
               </Link>
             ))}
           </div>

@@ -4,6 +4,7 @@ import type { PDFPageProxy, RenderTask } from "pdfjs-dist";
 import workerUrl from "pdfjs-dist/build/pdf.worker.min.mjs?url";
 import ui from "../ui.module.css";
 import { cx } from "../cx";
+import { indexOfToken, normalize } from "../provenance";
 import styles from "./PdfViewer.module.css";
 
 pdfjs.GlobalWorkerOptions.workerSrc = workerUrl;
@@ -21,7 +22,7 @@ type PageInfo = { page: PDFPageProxy; width: number; height: number };
  * Used instead of an <iframe>, which mobile browsers (Android Chrome in particular) don't render.
  * This module pulls in PDF.js, so load it with React.lazy.
  */
-export default function PdfViewer({ url }: { url: string }) {
+export default function PdfViewer({ url, highlight }: { url: string; highlight?: string[] | null }) {
   const scroller = useRef<HTMLDivElement>(null);
   const [pages, setPages] = useState<PageInfo[] | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -29,6 +30,8 @@ export default function PdfViewer({ url }: { url: string }) {
   /** Multiplier on "fit to width". */
   const [zoom, setZoom] = useState(1);
   const [current, setCurrent] = useState(1);
+  /** Bumped whenever a page's text layer finishes drawing, so highlights are reapplied. */
+  const [drawn, setDrawn] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
@@ -78,6 +81,20 @@ export default function PdfViewer({ url }: { url: string }) {
     return () => el.removeEventListener("scroll", onScroll);
   }, [pages]);
 
+  // Highlight where a value appears: mark the text-layer spans it covers and bring the first into view.
+  useEffect(() => {
+    const el = scroller.current;
+    if (!el) return;
+    el.querySelectorAll(`.${styles.hit}`).forEach((s) => s.classList.remove(styles.hit));
+    if (!highlight?.length) return;
+    const first = markText(el, highlight, styles.hit);
+    if (first) {
+      const box = el.getBoundingClientRect();
+      const r = first.getBoundingClientRect();
+      if (r.top < box.top + 30 || r.bottom > box.bottom - 30) el.scrollTo({ top: el.scrollTop + r.top - box.top - box.height / 3, behavior: "smooth" });
+    }
+  }, [highlight, drawn]);
+
   const widest = pages ? Math.max(...pages.map((p) => p.width)) : 1;
   const fit = width > 0 ? Math.max(0.1, (width - 2 * GAP) / widest) : 0;
   const scale = fit * zoom;
@@ -113,7 +130,7 @@ export default function PdfViewer({ url }: { url: string }) {
         ) : (
           scale > 0 && (
             <div className={styles.pages}>
-              {pages.map((p, i) => <Page key={i} n={i + 1} info={p} scale={scale} root={scroller} />)}
+              {pages.map((p, i) => <Page key={i} n={i + 1} info={p} scale={scale} root={scroller} onText={() => setDrawn((n) => n + 1)} />)}
             </div>
           )
         )}
@@ -122,7 +139,7 @@ export default function PdfViewer({ url }: { url: string }) {
   );
 }
 
-function Page({ n, info, scale, root }: { n: number; info: PageInfo; scale: number; root: RefObject<HTMLDivElement | null> }) {
+function Page({ n, info, scale, root, onText }: { n: number; info: PageInfo; scale: number; root: RefObject<HTMLDivElement | null>; onText: () => void }) {
   const box = useRef<HTMLDivElement>(null);
   const canvas = useRef<HTMLCanvasElement>(null);
   const textLayer = useRef<HTMLDivElement>(null);
@@ -152,14 +169,14 @@ function Page({ n, info, scale, root }: { n: number; info: PageInfo; scale: numb
     });
     render.promise.catch(() => {}); // cancelled renders reject
     const text = new pdfjs.TextLayer({ textContentSource: info.page.streamTextContent(), container: tl, viewport });
-    text.render().catch(() => {});
+    text.render().then(onText, () => {});
     return () => {
       render?.cancel();
       render = null;
       text.cancel();
       tl.replaceChildren();
     };
-  }, [near, info, scale]);
+  }, [near, info, scale]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <div
@@ -177,4 +194,36 @@ function Page({ n, info, scale, root }: { n: number; info: PageInfo; scale: numb
       {near && <div ref={textLayer} className={styles.textLayer} />}
     </div>
   );
+}
+
+/**
+ * Marks the text-layer spans that hold one of the needles (first match per
+ * page, words may span several spans). Returns the first marked span.
+ */
+function markText(root: HTMLElement, needles: string[], cls: string): HTMLElement | null {
+  let first: HTMLElement | null = null;
+  const wanted = needles.map(normalize).filter(Boolean);
+  for (const layer of root.querySelectorAll<HTMLElement>(`.${styles.textLayer}`)) {
+    const spans = [...layer.querySelectorAll<HTMLElement>("span")].filter((s) => !s.children.length);
+    let hay = " ";
+    const at: Array<{ span: HTMLElement; start: number; end: number }> = [];
+    for (const span of spans) {
+      const t = normalize(span.textContent ?? "");
+      if (!t) continue;
+      at.push({ span, start: hay.length, end: hay.length + t.length });
+      hay += t + " ";
+    }
+    for (const n of wanted) {
+      const i = indexOfToken(hay, n);
+      if (i < 0) continue;
+      for (const a of at) {
+        if (a.end > i && a.start < i + n.length) {
+          a.span.classList.add(cls);
+          first ??= a.span;
+        }
+      }
+      break;
+    }
+  }
+  return first;
 }

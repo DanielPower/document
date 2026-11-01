@@ -3,61 +3,112 @@
  * No class selectors here (scripts/check-css-modules.mjs enforces it).
  * Shared classes live in ui.module.css; everything else in the component's
  * own *.module.css, so class names can't collide across components.
+ *
+ * Docket is information dense: 13px text, 28px controls, 1px rules between
+ * rows rather than gaps between cards. Color is by role: the accent is for
+ * actions and selection; green means "creates", amber "changes" or
+ * "inferred", red "overdue, failed, or needs an answer". Component colors
+ * appear only as small dots, never behind text.
  */
 :root {
-  --bg: #f6f7f9;
+  --bg: #f3f4f6;
   --panel: #ffffff;
-  --border: #e3e5e9;
-  --text: #1c1f24;
+  --sunk: #f8f9fa;
+  --border: #e1e3e8;
+  --border-soft: #eceef1;
+  --text: #181b20;
+  --text-2: #3c424b;
   --muted: #6b7280;
-  --accent: #2563eb;
+  --accent: #2f5bd3;
   --accent-ink: #ffffff;
-  --danger: #dc2626;
+  --accent-soft: #e9effc;
+  --danger: #c4321f;
+  --new: #18794e;
+  --new-soft: #e6f4ec;
+  --change: #9a5b00;
+  --change-soft: #fff4e0;
+  --infer: #a86400;
+  --infer-line: #e3a23b;
+  --revised: #2d8a57;
+  --revised-soft: #eaf6ef;
+  --highlight: #ffe08a;
+  --canvas: #e1e4e9;
   --warn-bg: #fff7e6;
   --error-bg: #fdecec;
-  --radius: 8px;
-  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
-  font-size: 14px;
+  --radius: 6px;
+  --control-h: 28px;
+  --font: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-family: var(--font);
+  font-size: 13px;
+  line-height: 1.4;
+  font-variant-numeric: tabular-nums;
   color: var(--text);
   background: var(--bg);
+  -webkit-font-smoothing: antialiased;
 }
 @media (prefers-color-scheme: dark) {
   :root {
-    --bg: #15171b;
-    --panel: #1d2026;
-    --border: #2f333b;
+    --bg: #121418;
+    --panel: #1a1d22;
+    --sunk: #16191d;
+    --border: #2c3037;
+    --border-soft: #24282e;
     --text: #e6e8eb;
-    --muted: #9aa1ab;
-    --accent: #4f8cff;
+    --text-2: #c3c8cf;
+    --muted: #8f96a1;
+    --accent: #7aa2ff;
+    --accent-ink: #0f1420;
+    --accent-soft: #1f2a44;
+    --danger: #ff7a66;
+    --new: #5fd197;
+    --new-soft: #173326;
+    --change: #f0b45a;
+    --change-soft: #3a2b12;
+    --infer: #f0b45a;
+    --infer-line: #c88a2d;
+    --revised: #5fd197;
+    --revised-soft: #173326;
+    --highlight: #8a6d12;
+    --canvas: #0c0e11;
     --warn-bg: #3a2f17;
     --error-bg: #3d1d1d;
+    color-scheme: dark;
   }
 }
 * { box-sizing: border-box; }
 body { margin: 0; }
 a { color: var(--accent); text-decoration: none; }
-h2, h3, h4 { margin: 0.2em 0 0.4em; }
+a:hover { text-decoration: underline; }
+h2, h3, h4 { margin: 0.2em 0 0.4em; line-height: 1.25; }
+h2 { font-size: 18px; }
+h3 { font-size: 14px; }
+h4 { font-size: 13px; }
 mark { background: #fde68a; color: #1c1f24; padding: 0 1px; }
+:focus-visible { outline: 2px solid color-mix(in srgb, var(--accent) 55%, transparent); outline-offset: 1px; }
 
 input, select, textarea, button {
   font: inherit;
   color: inherit;
   background: var(--panel);
   border: 1px solid var(--border);
-  border-radius: 6px;
-  padding: 6px 8px;
+  border-radius: 5px;
+  padding: 0 8px;
+  min-height: var(--control-h);
 }
-textarea { resize: vertical; width: 100%; }
-input:focus, select:focus, textarea:focus { outline: 2px solid color-mix(in srgb, var(--accent) 40%, transparent); border-color: var(--accent); }
-input[type="color"] { padding: 2px; width: 44px; height: 32px; }
-button { cursor: pointer; padding: 6px 12px; display: inline-block; }
+textarea { resize: vertical; width: 100%; padding: 5px 8px; }
+input:focus, select:focus, textarea:focus { outline: 2px solid color-mix(in srgb, var(--accent) 30%, transparent); border-color: var(--accent); }
+input[type="color"] { padding: 2px; width: 44px; height: 28px; }
+input[type="checkbox"], input[type="radio"] { min-height: 0; accent-color: var(--accent); }
+button { cursor: pointer; padding: 0 10px; display: inline-flex; align-items: center; justify-content: center; gap: 6px; white-space: nowrap; }
 button:hover:not(:disabled) { border-color: var(--muted); }
 button:disabled { opacity: 0.5; cursor: default; }
 label { display: flex; flex-direction: column; gap: 3px; font-size: 12px; color: var(--muted); }
-label > input, label > select, label > textarea { color: var(--text); font-size: 14px; }
+label > input, label > select, label > textarea { color: var(--text); font-size: 13px; }
+kbd { font: 500 10.5px/14px var(--font-mono); border: 1px solid currentColor; border-radius: 3px; padding: 0 3px; opacity: 0.75; }
 
 /* Touch screens: bigger targets, and 16px inputs so mobile browsers don't zoom in on focus. */
 @media (pointer: coarse) {
   input, select, textarea { font-size: 16px; }
-  button { min-height: 36px; }
+  button, select { min-height: 36px; }
 }

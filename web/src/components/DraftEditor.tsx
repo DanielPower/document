@@ -1,16 +1,20 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { api } from "../api";
 import type { ComponentDef, ComponentInput, Draft, DraftComponent, DraftObjectUpdate, DraftValue, FieldDef, ObjectSummary } from "../types";
 import { cx } from "../cx";
 import { migrateComponentValues } from "../migrateValues";
+import { needlesFor } from "../provenance";
 import ui from "../ui.module.css";
-import { ComponentDefEditor } from "./ComponentDefEditor";
+import { Dot, humanizeKey } from "./Chip";
+import { ComponentDefEditor, TYPE_LABELS } from "./ComponentDefEditor";
+import { DateInput, NumberInput, quietClass } from "./FieldInputs";
 import { ObjectPicker } from "./ObjectPicker";
 import styles from "./DraftEditor.module.css";
 
 type Def = Pick<ComponentDef, "key" | "name" | "color" | "description"> & { fields: Array<Omit<FieldDef, "id" | "position">>; isNew?: boolean };
+type Field = Omit<FieldDef, "id" | "position">;
 
-function defsFor(catalog: ComponentDef[], draft: Draft): Map<string, Def> {
+export function defsFor(catalog: ComponentDef[], draft: Draft): Map<string, Def> {
   const m = new Map<string, Def>(catalog.map((c) => [c.key, c]));
   for (const nc of draft.newComponents) {
     if (!m.has(nc.key)) m.set(nc.key, { ...nc, color: nc.color ?? "#6b7280", isNew: true });
@@ -19,6 +23,7 @@ function defsFor(catalog: ComponentDef[], draft: Draft): Map<string, Def> {
 }
 
 const wordsOf = (s: string) => new Set(s.toLowerCase().match(/[\p{L}\p{N}]+/gu) ?? []);
+const isEmpty = (v: DraftValue | undefined) => v === null || v === undefined || v === "";
 
 /**
  * Existing objects that a proposed new one might be, best first. An object
@@ -45,9 +50,19 @@ export function rankMatches(o: Draft["newObjects"][number], objects: ObjectSumma
 let tempCounter = 0;
 const newTempId = () => `obj${Date.now().toString(36)}${tempCounter++}`;
 
+/** How a value got its current state, shown as a small marker next to it. */
+export interface ValueMark {
+  kind: "inferred" | "you" | "revised";
+  note?: string;
+}
+
 /**
- * Edits a Draft: title, date, attached components and their values, plus any
- * component definitions and objects the draft will create when applied.
+ * Edits a Draft: title, date, attached components and their values, plus
+ * what saving it does besides (component definitions and objects it creates,
+ * values it sets on existing objects), listed under "When you file/save".
+ *
+ * Values are label/value rows whose inputs read as text until pointed at, so
+ * the same view serves for reading a proposal and for correcting it.
  */
 export function DraftEditor(props: {
   draft: Draft;
@@ -61,8 +76,17 @@ export function DraftEditor(props: {
   onSameAs?: (tempId: string, objectId: string) => void;
   /** Offer to create a new object next to the document (intake only). */
   allowNewObjects?: boolean;
+  /**
+   * Inbox review: the title and date are shown by the caller, empty optional
+   * fields fold into one line, and "When you file" always lists what filing does.
+   */
+  review?: boolean;
+  /** Marker for a value of the draft's own components; path is "c<index>.<field key>". */
+  markFor?: (path: string) => ValueMark | undefined;
+  /** Pointing at or editing a value: the strings to find it by in the document (empty to clear). */
+  onLocate?: (needles: string[]) => void;
 }) {
-  const { draft, onChange, catalog } = props;
+  const { draft, onChange, catalog, review } = props;
   const defs = useMemo(() => defsFor(catalog, draft), [catalog, draft]);
   const set = (patch: Partial<Draft>) => onChange({ ...draft, ...patch });
 
@@ -100,6 +124,8 @@ export function DraftEditor(props: {
     objects: props.objects,
     newObjects: draft.newObjects,
     selfId: props.selfId,
+    fold: !!review,
+    onLocate: props.onLocate,
     onCreateObject: (title, setRef) => {
       // Create the object and point the ref at it in one state update.
       const tempId = newTempId();
@@ -108,20 +134,23 @@ export function DraftEditor(props: {
     },
   };
 
+  const hasEffects = draft.newComponents.length + draft.newObjects.length + (draft.objectUpdates?.length ?? 0) > 0;
+  const fileAs = draft.components.map((c) => defs.get(c.component)?.name ?? humanizeKey(c.component));
+
   return (
     <div className={styles.editor}>
-      <div className={ui.row}>
-        <label className={ui.grow}>
-          Title
-          <input value={draft.title} onChange={(e) => set({ title: e.target.value })} />
-        </label>
-        {props.showDate && (
-          <label>
-            Date
-            <input type="date" value={draft.documentDate ?? ""} onChange={(e) => set({ documentDate: e.target.value || null })} />
-          </label>
-        )}
-      </div>
+      {!review && (
+        <dl className={ui.kv}>
+          <dt>Title</dt>
+          <dd><input className={quietClass} value={draft.title} onChange={(e) => set({ title: e.target.value })} placeholder="Title" /></dd>
+          {props.showDate && (
+            <>
+              <dt>Date</dt>
+              <dd><DateInput quiet value={draft.documentDate} onChange={(v) => set({ documentDate: v })} /></dd>
+            </>
+          )}
+        </dl>
+      )}
 
       <ComponentList
         ctx={ctx}
@@ -130,96 +159,90 @@ export function DraftEditor(props: {
         withDraft={(cs, d) => ({ ...d, components: cs })}
         draft={draft}
         pickFrom={[...defs.values()]}
+        markFor={props.markFor}
       />
 
-      {draft.newComponents.length > 0 && (
-        <section className={styles.proposed}>
-          <h4>New component definitions</h4>
-          <p className={cx(ui.muted, ui.small)}>These will be created when you save. Edit or discard them.</p>
-          {draft.newComponents.map((nc, i) => (
-            <div className={styles.proposedItem} key={i}>
-              <ComponentDefEditor
-                value={nc}
-                catalog={catalog}
-                compact
-                onChange={(v: ComponentInput) => {
-                  // Keep the values already filled in for this component valid: follow renamed
-                  // fields and keys, convert changed types, drop what no longer fits.
-                  const rename = (cs: DraftComponent[]) => migrateComponentValues(nc, v, cs);
-                  onChange({
-                    ...draft,
-                    newComponents: draft.newComponents.map((x, j) => (j === i ? v : x)),
-                    components: rename(draft.components),
-                    newObjects: draft.newObjects.map((o) => ({ ...o, components: rename(o.components) })),
-                  });
-                }}
-              />
-              <button className={cx(ui.compact, ui.danger)} onClick={() => discardNewComponent(nc.key)}>Discard “{nc.name}”</button>
-            </div>
-          ))}
-        </section>
-      )}
+      {(review || hasEffects) && (
+        <section className={styles.effects} aria-label={review ? "When you file" : "When you save"}>
+          <div className={styles.effectsHead}>{review ? "When you file" : "When you save"}</div>
+          {review && (
+            <Effect sym="→" kind="link">
+              <div>
+              File as {fileAs.length ? fileAs.map((n, i) => <span key={i}>{i > 0 && " + "}<b>{n}</b></span>) : <b>a document with no components</b>}
+              {draft.documentDate ? <>, dated <span className={ui.mono}>{draft.documentDate}</span></> : ", with no date"}
+              </div>
+            </Effect>
+          )}
 
-      {draft.newObjects.length > 0 && (
-        <section className={styles.proposed}>
-          <h4>New objects</h4>
-          <p className={cx(ui.muted, ui.small)}>Things this document refers to that don't exist yet. They'll be created when you save.</p>
+          {draft.newComponents.map((nc, i) => (
+            <NewComponentEffect
+              key={nc.key || i}
+              value={nc}
+              catalog={catalog}
+              onDiscard={() => discardNewComponent(nc.key)}
+              onChange={(v: ComponentInput) => {
+                // Keep the values already filled in for this component valid: follow renamed
+                // fields and keys, convert changed types, drop what no longer fits.
+                const rename = (cs: DraftComponent[]) => migrateComponentValues(nc, v, cs);
+                onChange({
+                  ...draft,
+                  newComponents: draft.newComponents.map((x, j) => (j === i ? v : x)),
+                  components: rename(draft.components),
+                  newObjects: draft.newObjects.map((o) => ({ ...o, components: rename(o.components) })),
+                });
+              }}
+            />
+          ))}
+
           {draft.newObjects.map((o, i) => {
             const m = rankMatches(o, props.objects);
-            const best = m.likely[0];
             return (
-            <div className={styles.proposedItem} key={o.tempId}>
-              {props.onSameAs && best && (
-                <div className={styles.lookalike}>
-                  <div>
-                    <strong>Looks like “{best.title}”</strong>, which you already have.
-                    {best.summary && <div className={cx(ui.small, ui.muted)}>{best.summary}</div>}
-                  </div>
-                  <button className={cx(ui.compact, ui.primary)} onClick={() => props.onSameAs!(o.tempId, best.id)}>Use “{best.title}”</button>
+              <Effect key={o.tempId} sym="+" kind="new">
+                <div className={styles.effectLine}>
+                  <span>Create object</span>
+                  <input
+                    className={cx(quietClass, styles.objectTitle)}
+                    value={o.title}
+                    aria-label="New object's title"
+                    onChange={(e) => set({ newObjects: draft.newObjects.map((x, j) => (j === i ? { ...x, title: e.target.value } : x)) })}
+                  />
+                  <span className={ui.tagNew}>new</span>
                 </div>
-              )}
-              <label>
-                Title
-                <input
-                  value={o.title}
-                  onChange={(e) => set({ newObjects: draft.newObjects.map((x, j) => (j === i ? { ...x, title: e.target.value } : x)) })}
+                <ComponentList
+                  ctx={{ ...ctx, fold: false }}
+                  draft={draft}
+                  components={o.components}
+                  onChange={(components) => set({ newObjects: draft.newObjects.map((x, j) => (j === i ? { ...x, components } : x)) })}
+                  withDraft={(cs, d) => ({ ...d, newObjects: d.newObjects.map((x) => (x.tempId === o.tempId ? { ...x, components: cs } : x)) })}
+                  pickFrom={[...defs.values()]}
+                  nested
                 />
-              </label>
-              {props.onSameAs && (
-                <label>
-                  Already have it?
-                  <select value="" onChange={(e) => e.target.value && props.onSameAs!(o.tempId, e.target.value)}>
-                    <option value="">No, create “{o.title}”</option>
-                    {[["Likely", m.likely], ["Same kind", m.sameKind], ["Other objects", m.other]].map(([label, list]) =>
-                      (list as ObjectSummary[]).length ? (
-                        <optgroup key={label as string} label={label as string}>
-                          {(list as ObjectSummary[]).map((x) => <option key={x.id} value={x.id}>Same as “{x.title}”</option>)}
-                        </optgroup>
-                      ) : null,
-                    )}
-                  </select>
-                </label>
-              )}
-              <ComponentList
-                ctx={ctx}
-                draft={draft}
-                components={o.components}
-                onChange={(components) => set({ newObjects: draft.newObjects.map((x, j) => (j === i ? { ...x, components } : x)) })}
-                withDraft={(cs, d) => ({ ...d, newObjects: d.newObjects.map((x) => (x.tempId === o.tempId ? { ...x, components: cs } : x)) })}
-                pickFrom={[...defs.values()]}
-              />
-              <button className={cx(ui.compact, ui.danger)} onClick={() => discardNewObject(o.tempId)}>Discard “{o.title}”</button>
-            </div>
+                <div className={styles.effectActions}>
+                  {props.onSameAs && (
+                    <select
+                      className={cx(ui.compact, styles.sameAs)}
+                      value=""
+                      aria-label="Already have it?"
+                      onChange={(e) => e.target.value && props.onSameAs!(o.tempId, e.target.value)}
+                    >
+                      <option value="">Already have it? Link an existing object…</option>
+                      {[["Likely", m.likely], ["Same kind", m.sameKind], ["Other objects", m.other]].map(([label, list]) =>
+                        (list as ObjectSummary[]).length ? (
+                          <optgroup key={label as string} label={label as string}>
+                            {(list as ObjectSummary[]).map((x) => <option key={x.id} value={x.id}>Same as “{x.title}”</option>)}
+                          </optgroup>
+                        ) : null,
+                      )}
+                    </select>
+                  )}
+                  <button className={cx(ui.compact, ui.ghost, ui.danger)} onClick={() => discardNewObject(o.tempId)}>Don't create</button>
+                </div>
+              </Effect>
             );
           })}
-        </section>
-      )}
-      {(draft.objectUpdates?.length ?? 0) > 0 && (
-        <section className={styles.proposed}>
-          <h4>Changes to existing objects</h4>
-          <p className={cx(ui.muted, ui.small)}>Details from this document that will be saved on objects you already have. Nothing else on them changes.</p>
-          {draft.objectUpdates!.map((u, i) => (
-            <ObjectUpdateCard
+
+          {(draft.objectUpdates ?? []).map((u, i) => (
+            <ObjectUpdateEffect
               key={u.objectId}
               update={u}
               ctx={ctx}
@@ -228,12 +251,46 @@ export function DraftEditor(props: {
               }
             />
           ))}
+
+          {props.allowNewObjects && draft.newObjects.length === 0 && (
+            <button className={cx(ui.link, ui.small, styles.newObjectLink)} onClick={() => addNewObject()}>+ Also create an object (a car, a house, an account…)</button>
+          )}
         </section>
       )}
-      {props.allowNewObjects && draft.newObjects.length === 0 && (
-        <button className={cx(ui.link, ui.small, styles.newObjectLink)} onClick={() => addNewObject()}>+ Create a new object alongside this</button>
-      )}
     </div>
+  );
+}
+
+function Effect({ sym, kind, children }: { sym: string; kind: "new" | "change" | "link"; children: ReactNode }) {
+  return (
+    <div className={styles.effect}>
+      <span className={cx(styles.sym, kind === "new" && styles.symNew, kind === "change" && styles.symChange)} aria-hidden="true">{sym}</span>
+      <div className={styles.effectBody}>{children}</div>
+    </div>
+  );
+}
+
+/** A component definition filing will create: its fields in one line, the editor on request. */
+function NewComponentEffect(props: { value: ComponentInput; catalog: ComponentDef[]; onChange: (v: ComponentInput) => void; onDiscard: () => void }) {
+  const [open, setOpen] = useState(false);
+  const { value: nc } = props;
+  return (
+    <Effect sym="+" kind="new">
+      <div className={styles.effectLine}>
+        <span>New component</span>
+        <Dot color={nc.color} />
+        <b>{nc.name || nc.key}</b>
+        <span className={ui.tagNew}>new</span>
+      </div>
+      <div className={cx(ui.small, ui.muted)}>
+        {nc.fields.length ? nc.fields.map((f) => `${f.label} (${TYPE_LABELS[f.type].toLowerCase()})`).join(" · ") : "A tag with no fields"}
+      </div>
+      {open && <div className={styles.defEditor}><ComponentDefEditor value={nc} catalog={props.catalog} compact onChange={props.onChange} /></div>}
+      <div className={styles.effectActions}>
+        <button className={cx(ui.compact)} onClick={() => setOpen((v) => !v)}>{open ? "Done editing" : "Edit definition"}</button>
+        <button className={cx(ui.compact, ui.ghost, ui.danger)} onClick={props.onDiscard}>Don't create</button>
+      </div>
+    </Effect>
   );
 }
 
@@ -242,6 +299,9 @@ interface ListCtx {
   objects: ObjectSummary[];
   newObjects: Draft["newObjects"];
   selfId?: string;
+  /** Fold empty optional fields into one line. */
+  fold: boolean;
+  onLocate?: (needles: string[]) => void;
   onCreateObject: (title: string, setRef: (d: Draft, ref: string) => Draft) => void;
 }
 
@@ -253,49 +313,80 @@ function ComponentList(props: {
   /** Writes an updated component list into a (possibly newer) draft. */
   withDraft: (cs: DraftComponent[], d: Draft) => Draft;
   pickFrom: Def[];
+  markFor?: (path: string) => ValueMark | undefined;
+  /** Inside a new object: lighter headings. */
+  nested?: boolean;
 }) {
   const { ctx, components, onChange } = props;
   const attached = new Set(components.map((c) => c.component));
+  /** Components whose empty fields were unfolded with "add". */
+  const [open, setOpen] = useState<Set<number>>(new Set());
   return (
-    <div className={styles.componentList}>
+    <div className={cx(styles.componentList, props.nested && styles.nested)}>
       {components.map((c, i) => {
         const def = ctx.defs.get(c.component);
         const update = (values: DraftComponent["values"]) => onChange(components.map((x, j) => (j === i ? { ...x, values } : x)));
+        const fields = def?.fields ?? [];
+        const folded = ctx.fold && !open.has(i) ? fields.filter((f) => isEmpty(c.values[f.key]) && !f.required) : [];
+        const shown = fields.filter((f) => !folded.includes(f));
         return (
-          <div className={styles.componentCard} key={i} style={{ borderLeftColor: def?.color ?? "#999" }}>
-            <div className={styles.componentCardHead}>
-              <span className={styles.componentName}>{def?.name ?? c.component}</span>
-              {def?.isNew && <span className={cx(ui.badge, ui.badgeNew)}>new</span>}
-              {!def && <span className={cx(ui.badge, ui.badgeWarn)}>unknown component</span>}
-              <button className={ui.icon} title="Remove component" onClick={() => onChange(components.filter((_, j) => j !== i))}>✕</button>
+          <section className={styles.component} key={i}>
+            <div className={ui.sectionHead}>
+              <Dot color={def?.color ?? "#999"} />
+              <span>{def?.name ?? humanizeKey(c.component)}</span>
+              {def?.isNew && <span className={ui.tagNew}>new</span>}
+              {!def && <span className={ui.tagWarn}>unknown component</span>}
+              <span className={ui.spacer} />
+              <button className={ui.icon} title={`Remove ${def?.name ?? "component"}`} onClick={() => onChange(components.filter((_, j) => j !== i))}>✕</button>
             </div>
-            {def && def.fields.length > 0 && (
-              <div className={styles.fieldGrid}>
-                {def.fields.map((f) => (
-                  <FieldInput
-                    key={f.key}
-                    field={f}
-                    value={c.values[f.key] ?? null}
-                    onChange={(v) => update({ ...c.values, [f.key]: v })}
-                    ctx={ctx}
-                    onCreateObject={(title) =>
-                      ctx.onCreateObject(title, (d, ref) =>
-                        props.withDraft(components.map((x, j) => (j === i ? { ...x, values: { ...x.values, [f.key]: ref } } : x)), d),
-                      )
-                    }
-                  />
-                ))}
+            {shown.length > 0 && (
+              <dl className={cx(ui.kv, styles.fields)}>
+                {shown.map((f) => {
+                  const v = c.values[f.key] ?? null;
+                  const mark = props.markFor?.(`c${i}.${f.key}`);
+                  const missing = f.required && isEmpty(v);
+                  const locate = () => ctx.onLocate?.(needlesFor(f, v));
+                  return (
+                    <FieldRow
+                      key={f.key}
+                      field={f}
+                      mark={mark}
+                      missing={missing}
+                      onLocate={ctx.onLocate ? locate : undefined}
+                    >
+                      <FieldInput
+                        field={f}
+                        value={v}
+                        onChange={(nv) => update({ ...c.values, [f.key]: nv })}
+                        ctx={ctx}
+                        onCreateObject={(title) =>
+                          ctx.onCreateObject(title, (d, ref) =>
+                            props.withDraft(components.map((x, j) => (j === i ? { ...x, values: { ...x.values, [f.key]: ref } } : x)), d),
+                          )
+                        }
+                      />
+                    </FieldRow>
+                  );
+                })}
+              </dl>
+            )}
+            {folded.length > 0 && (
+              <div className={styles.empties}>
+                {folded.map((f) => f.label).join(", ")}: empty ·{" "}
+                <button className={cx(ui.link, ui.small)} onClick={() => setOpen((s) => new Set(s).add(i))}>add</button>
               </div>
             )}
-          </div>
+            {def && !fields.length && <div className={styles.empties}>A tag: no fields to fill in.</div>}
+          </section>
         );
       })}
       <select
-        className={styles.addComponent}
+        className={cx(styles.addComponent, ui.compact)}
         value=""
+        aria-label="Add a component"
         onChange={(e) => e.target.value && onChange([...components, { component: e.target.value, values: {} }])}
       >
-        <option value="">+ Add component…</option>
+        <option value="">+ Add component</option>
         {props.pickFrom
           .slice()
           .sort((a, b) => a.name.localeCompare(b.name))
@@ -310,70 +401,92 @@ function ComponentList(props: {
   );
 }
 
+const MARK_GLYPH: Record<ValueMark["kind"], string> = { inferred: "≈", you: "you", revised: "rev" };
+const MARK_TITLE: Record<ValueMark["kind"], string> = {
+  inferred: "The AI inferred this; it isn't written in the document",
+  you: "You changed this",
+  revised: "Changed by your last request to the AI",
+};
+
+const GLYPH_CLASS: Record<ValueMark["kind"], string> = { inferred: styles.glyph_inferred, you: styles.glyph_you, revised: styles.glyph_revised };
+
+/** One label/value row with its provenance marker. */
+function FieldRow(props: { field: Field; mark?: ValueMark; missing?: boolean; onLocate?: () => void; children: ReactNode }) {
+  const { field: f, mark } = props;
+  const cls = cx(
+    styles.value,
+    mark?.kind === "inferred" && styles.markInferred,
+    mark?.kind === "you" && styles.markYou,
+    mark?.kind === "revised" && styles.markRevised,
+  );
+  return (
+    <>
+      <dt title={f.description || undefined} onMouseEnter={props.onLocate}>
+        {f.label}
+        {f.required && <span className={styles.req} title="Required">*</span>}
+      </dt>
+      <dd className={cls} onMouseEnter={props.onLocate} onFocusCapture={props.onLocate}>
+        <div className={styles.input}>{props.children}</div>
+        {mark && (
+          <span className={styles.markNote} title={MARK_TITLE[mark.kind]}>
+            <span className={cx(styles.glyph, GLYPH_CLASS[mark.kind])}>{MARK_GLYPH[mark.kind]}</span>
+            {mark.note && <span className={styles.note}>{mark.note}</span>}
+          </span>
+        )}
+        {props.missing && !mark && <span className={ui.tagWarn}>required</span>}
+      </dd>
+    </>
+  );
+}
+
 function FieldInput(props: {
-  field: Omit<FieldDef, "id" | "position">;
+  field: Field;
   value: DraftValue;
   onChange: (v: DraftValue) => void;
   ctx: ListCtx;
   onCreateObject?: (title: string) => void;
-  /** Just the input, without its label. */
-  bare?: boolean;
 }) {
   const { field: f, value, onChange } = props;
-  const label = (
-    <span title={f.description}>
-      {f.label}
-      {f.required && <span className={styles.req}>*</span>}
-    </span>
-  );
   const str = value === null || value === undefined ? "" : String(value);
+  const label = f.label;
 
-  let input: React.ReactNode;
   switch (f.type) {
     case "longtext":
-      input = <textarea rows={2} value={str} onChange={(e) => onChange(e.target.value || null)} />;
-      break;
+      return <textarea className={quietClass} rows={2} value={str} aria-label={label} onChange={(e) => onChange(e.target.value || null)} />;
     case "number":
     case "money":
-      input = (
+      return (
         <div className={styles.withSuffix}>
-          <input
-            type="number"
-            step={f.type === "money" ? "0.01" : "any"}
-            value={str}
-            onChange={(e) => onChange(e.target.value === "" ? null : Number(e.target.value))}
-          />
+          <NumberInput quiet money={f.type === "money"} value={typeof value === "number" ? value : null} aria-label={label} onChange={onChange} />
           {f.type === "money" && f.options.currency && <span className={styles.suffix}>{f.options.currency}</span>}
         </div>
       );
-      break;
     case "date":
-      input = <input type="date" value={str} onChange={(e) => onChange(e.target.value || null)} />;
-      break;
+      return <DateInput quiet value={str || null} aria-label={label} onChange={onChange} />;
     case "boolean":
-      input = (
-        <select value={value === null ? "" : value ? "true" : "false"} onChange={(e) => onChange(e.target.value === "" ? null : e.target.value === "true")}>
+      return (
+        <select className={quietClass} aria-label={label} value={value === null || value === undefined ? "" : value ? "true" : "false"} onChange={(e) => onChange(e.target.value === "" ? null : e.target.value === "true")}>
           <option value="">—</option>
           <option value="true">Yes</option>
           <option value="false">No</option>
         </select>
       );
-      break;
     case "select":
-      input = (
-        <select value={str} onChange={(e) => onChange(e.target.value || null)}>
+      return (
+        <select className={quietClass} aria-label={label} value={str} onChange={(e) => onChange(e.target.value || null)}>
           <option value="">—</option>
           {(f.options.choices ?? []).map((c) => (
             <option key={c} value={c}>{c}</option>
           ))}
         </select>
       );
-      break;
     case "ref": {
       const required = f.options.component;
       const options = props.ctx.objects.filter((o) => o.id !== props.ctx.selfId && (!required || o.components.includes(required)));
-      input = (
+      return (
+        <div className={styles.withSuffix}>
         <ObjectPicker
+          quiet
           value={str || null}
           onChange={onChange}
           onCreate={props.onCreateObject}
@@ -382,27 +495,21 @@ function FieldInput(props: {
             ...options.map((o) => ({ value: o.id, title: o.title, detail: o.summary })),
           ]}
         />
+        {str.startsWith("new:") && <span className={ui.tagNew} title="Created when you file">new</span>}
+        </div>
       );
-      break;
     }
     default:
-      input = <input value={str} onChange={(e) => onChange(e.target.value || null)} />;
+      return <input className={cx(quietClass, f.options.identifier && ui.mono)} aria-label={label} value={str} onChange={(e) => onChange(e.target.value || null)} />;
   }
-  if (props.bare) return <div className={cx(styles.field, styles.bare)}>{input}</div>;
-  return (
-    <label className={cx(styles.field, f.type === "longtext" && styles.fieldWide)}>
-      {label}
-      {input}
-    </label>
-  );
 }
 
 /** Shows a value the way the owner reads it. */
-function display(f: Omit<FieldDef, "id" | "position">, v: DraftValue, objects: ObjectSummary[]): string {
+export function display(f: Pick<FieldDef, "type" | "options">, v: DraftValue, objects: ObjectSummary[]): string {
   if (v === null || v === undefined || v === "") return "";
   if (f.type === "boolean") return v ? "Yes" : "No";
   if (f.type === "ref") return objects.find((o) => o.id === v)?.title ?? String(v);
-  if (f.type === "money" && f.options.currency) return `${v} ${f.options.currency}`;
+  if (f.type === "money" && typeof v === "number") return `${v.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}${f.options.currency ? ` ${f.options.currency}` : ""}`;
   return String(v);
 }
 
@@ -410,7 +517,7 @@ function display(f: Omit<FieldDef, "id" | "position">, v: DraftValue, objects: O
  * The fields a document will set on an existing object, each as
  * "current → new", so it's clear nothing else on the object changes.
  */
-function ObjectUpdateCard(props: {
+function ObjectUpdateEffect(props: {
   update: DraftObjectUpdate;
   ctx: ListCtx;
   onChange: (u: DraftObjectUpdate | null) => void;
@@ -429,7 +536,7 @@ function ObjectUpdateCard(props: {
     if (!def) return [];
     const now = current?.components.find((x) => x.component === c.component);
     return def.fields
-      .filter((f) => c.values[f.key] !== null && c.values[f.key] !== undefined && c.values[f.key] !== "")
+      .filter((f) => !isEmpty(c.values[f.key]))
       .map((f) => ({ ci, def, f, was: now?.values[f.key] ?? null, value: c.values[f.key] }));
   });
 
@@ -442,30 +549,34 @@ function ObjectUpdateCard(props: {
         else values[key] = v;
         return { ...c, values };
       })
-      .filter((c) => Object.values(c.values).some((x) => x !== null && x !== undefined && x !== ""));
+      .filter((c) => Object.values(c.values).some((x) => !isEmpty(x)));
     onChange(components.length ? { ...u, components } : null);
   };
 
   return (
-    <div className={styles.proposedItem}>
-      <strong>{title}</strong>
+    <Effect sym="~" kind="change">
+      <div className={styles.effectLine}>
+        <span>Change</span>
+        <b>{title}</b>
+        <span className={ui.tagChange}>change</span>
+      </div>
       <div className={styles.changes}>
         {rows.map(({ ci, def, f, was, value }) => (
           <div className={styles.change} key={`${ci}.${f.key}`}>
-            <div className={styles.changeHead}>
-              <span>{def.name} › {f.label}</span>
-              <button className={ui.icon} title="Don't change this" onClick={() => setValue(ci, f.key, undefined)}>✕</button>
+            <span className={styles.changeLabel}>{def.name} › {f.label}</span>
+            <span className={styles.was}>{display(f, was, ctx.objects) || <em>empty</em>}</span>
+            <span className={ui.muted} aria-hidden="true">→</span>
+            <div className={styles.input}>
+              <FieldInput field={f} value={value} ctx={ctx} onChange={(v) => setValue(ci, f.key, v)} />
             </div>
-            <div className={styles.changeBody}>
-              <span className={cx(ui.small, styles.was)}>{display(f, was, ctx.objects) || <em className={ui.muted}>empty</em>}</span>
-              <span className={ui.muted}>→</span>
-              <FieldInput field={{ ...f, label: "" }} value={value} ctx={ctx} onChange={(v) => setValue(ci, f.key, v)} bare />
-            </div>
+            <button className={ui.icon} title="Don't change this" onClick={() => setValue(ci, f.key, undefined)}>✕</button>
           </div>
         ))}
         {!rows.length && <p className={cx(ui.muted, ui.small)}>Nothing left to change.</p>}
       </div>
-      <button className={cx(ui.compact, ui.danger)} onClick={() => onChange(null)}>Don't change “{title}”</button>
-    </div>
+      <div className={styles.effectActions}>
+        <button className={cx(ui.compact, ui.ghost, ui.danger)} onClick={() => onChange(null)}>Don't change “{title}”</button>
+      </div>
+    </Effect>
   );
 }
