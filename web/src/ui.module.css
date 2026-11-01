@@ -80,7 +80,8 @@
 .listItem:last-child { border-bottom: none; }
 .listItem:hover { background: var(--sunk); }
 .listItemActive { background: var(--accent-soft); box-shadow: inset 3px 0 var(--accent); }
-.listItem > div:first-child { flex: 1; min-width: 0; }
+/* Text in a list row wraps: buttons default to nowrap, and a long line would push the row's name out of view. */
+.listItem > div:last-of-type { flex: 1; min-width: 0; white-space: normal; overflow-wrap: anywhere; }
 .listTitle { font-weight: 600; }
 
 /* data tables */
