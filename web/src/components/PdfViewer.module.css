@@ -1,10 +1,15 @@
-.viewer { flex: 1; min-width: 0; min-height: 0; display: flex; flex-direction: column; background: var(--canvas); }
+/* PdfViewer.tsx reads --pdf-pad to fit pages to the width. */
+.viewer { --pdf-gap: 12px; --pdf-pad: 12px; flex: 1; min-width: 0; min-height: 0; display: flex; flex-direction: column; background: var(--canvas); }
 .toolbar { display: flex; align-items: center; gap: 4px; padding: 4px 8px; background: var(--panel); border-bottom: 1px solid var(--border); }
 .pageCount { color: var(--muted); font-variant-numeric: tabular-nums; }
 .scroller { flex: 1; min-height: 0; overflow: auto; }
+/* Phones: no padding around the pages, so the page uses the whole width. */
+@media (max-width: 700px) {
+  .viewer { --pdf-gap: 6px; --pdf-pad: 0px; }
+}
 .message { color: #e6e8eb; text-align: center; padding: 24px; margin: 0; }
 /* inline-flex so a page zoomed wider than the viewer widens the scroll area instead of being clipped on the left. */
-.pages { display: inline-flex; flex-direction: column; align-items: center; gap: 12px; padding: 12px; min-width: 100%; }
+.pages { display: inline-flex; flex-direction: column; align-items: center; gap: var(--pdf-gap); padding: var(--pdf-pad); min-width: 100%; }
 .page { position: relative; flex-shrink: 0; background: white; box-shadow: 0 1px 4px rgb(0 0 0 / 0.4); --scale-round-x: 1px; --scale-round-y: 1px; }
 .canvas { display: block; width: 100%; height: 100%; }
 
